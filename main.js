@@ -4,9 +4,45 @@ let height = canvas.height;
 document.getElementById("canvas-size").innerHTML = `${width} x ${height} (width x height)`;
 let ctx = canvas.getContext("2d");
 
+class Point{
+  constructor(x, y){
+    if(typeof x !== 'number') throw new Error("'x' must be a number");
+    if(typeof y !== 'number') throw new Error("'y' must be a number");
+    this.x = x;
+    this.y = y;
+  }
+}
+
+class Line{
+  constructor(point1, point2){
+    if(typeof point1.x !== 'number') throw new Error("first point's 'x' must be a number");
+    if(typeof point1.y !== 'number') throw new Error("first point's 'y' must be a number");
+    if(typeof point2.x !== 'number') throw new Error("second point's 'x' must be a number");
+    if(typeof point2.y !== 'number') throw new Error("second point's 'y' must be a number");
+    this.from = point1;
+    this.to = point2;
+  }
+}
+
+let lastClickedPos = new Point(0, 0);
+
+function getCursorPosition(canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = height - event.clientY + rect.top;
+  lastClickedPos.x = x;
+  lastClickedPos.y = y;
+}
+
+canvas.addEventListener('mousedown', function(e) {
+  getCursorPosition(canvas, e);
+})
+
 // TODO:
 // Make floors also directed, so the algorithm becomes simpler.
 // Fix collision algorithm to make it directed, that way it becomes computationally cheaper.
+//
+// TODO: Structure code using object-oriented programming.
 
 ///////////////////////////////////
 ////////// State definitions //////
@@ -18,7 +54,6 @@ const JUMP = 2;
 ///////////////////////////////////
 /// Game physics configuration ////
 ///////////////////////////////////
-const FLOOR_CACHE_ENABLED = true;
 const FALLING_SPEED = 5;
 const CHARACTER_SIZE = 5;
 const JUMP_SPEED = 10;
@@ -29,9 +64,12 @@ const INITIAL_WALKING_SPEED = 0.1;
 const SPEED_ERROR = SPEED_ACCELERATION; // Speeds below this value will be equalled to zero.
 
 
-///////////////////////////////////
-////// Current physics state //////
-///////////////////////////////////
+//////////////////////////////////////
+/// Current physics and game state ///
+//////////////////////////////////////
+let character = new Point(150, 180);
+const floors = [];
+const walls = [];
 let currentSpeed = 0;
 let currentState = FALLING;
 let currentJumpSpeed = 0;
@@ -40,9 +78,8 @@ let currentJumpSpeed = 0;
 ////////////// Other //////////////
 ///////////////////////////////////
 
-// Store the last floor. Used for optimizations. Value is not guaranteed to be correct. It has to be checked first
-// if the character is still on this floor (the heuristic is to assume it is, so check this one first before all other floors.)
-let cachedFloor = null;
+// Used to store the last touched floor instead of getting it again.
+let currentFloor = null;
 
 ///////////////////////////////////
 //////// Input management /////////
@@ -91,36 +128,27 @@ function keyUpHandler(e) {
   }
 }
 
-function createPoint(x, y){
-  return { x, y };
-}
+///////////////////////////////////
+///// Creation of dummy map ///////
+///////////////////////////////////
 
-function createLine(point1, point2){
-  return { from: point1, to: point2 };
-}
+floors.push(new Line(new Point(0, 0), new Point(100, 100)));
+floors.push(new Line(new Point(100, 100), new Point(200, 100)));
+floors.push(new Line(new Point(200, 100), new Point(300, 80)));
+floors.push(new Line(new Point(300, 80), new Point(500, 30)));
+floors.push(new Line(new Point(500, 30), new Point(600, 80)));
+floors.push(new Line(new Point(300, 170), new Point(600, 200)));
+floors.push(new Line(new Point(250, 150), new Point(450, 0)))
 
-let character = createPoint(140, 180);
-
-const floors = [];
-const walls = [];
-
-floors.push(createLine(createPoint(0, 0), createPoint(100, 100)));
-floors.push(createLine(createPoint(100, 100), createPoint(200, 100)));
-floors.push(createLine(createPoint(200, 100), createPoint(300, 80)));
-floors.push(createLine(createPoint(300, 80), createPoint(500, 30)));
-floors.push(createLine(createPoint(500, 30), createPoint(600, 80)));
-floors.push(createLine(createPoint(300, 170), createPoint(600, 200)));
-floors.push(createLine(createPoint(250, 150), createPoint(450, 0)))
-
-walls.push(createLine(createPoint(100, 100), createPoint(100, 400)));
-walls.push(createLine(createPoint(300, 20), createPoint(249, 150)));
-walls.push(createLine(createPoint(550, 500), createPoint(500, 20)));
-walls.push(createLine(createPoint(200, 400), createPoint(200, 200)));
-walls.push(createLine(createPoint(150, 100), createPoint(150, -100)));
-floors.push(createLine(createPoint(100, 400), createPoint(200, 400)));
-floors.push(createLine(createPoint(250, 200), createPoint(400, 200)));
-floors.push(createLine(createPoint(350, 300), createPoint(450, 300)));
-floors.push(createLine(createPoint(250, 350), createPoint(400, 350)));
+walls.push(new Line(new Point(100, 100), new Point(100, 400)));
+walls.push(new Line(new Point(300, 20), new Point(249, 150)));
+walls.push(new Line(new Point(550, 500), new Point(500, 20)));
+walls.push(new Line(new Point(200, 400), new Point(200, 200)));
+walls.push(new Line(new Point(150, 100), new Point(150, -100)));
+floors.push(new Line(new Point(100, 400), new Point(200, 400)));
+floors.push(new Line(new Point(250, 200), new Point(400, 200)));
+floors.push(new Line(new Point(350, 300), new Point(450, 300)));
+floors.push(new Line(new Point(250, 350), new Point(400, 350)));
 
 /**
  * This method is used for all collisions against walls and floors.
@@ -169,7 +197,19 @@ function updateSpeed(accel){
   }
 }
 
-function fallingStatus(){
+function fallingState(){
+  // TODO: Does it make any difference to put this code before or after the floor collision detection?
+  // There is a bug where when the game starts in the falling state, and in the floor there's a wall
+  // directly below the first floor, the currentFloor will be null (because of the order of execution
+  // in this code), and the wall below won't be ignored, and the character will glitch (i.e. be pushed
+  // by the wall), even though there is a code that ignores walls that are below.
+  // However, this only happens for the first floor collision, and only in the rare case where there is a
+  // wall directly below, so it's extremely rare anyways. Remove this code if there's no sign
+  // this order of execution (i.e. change X, Y position first, and then detect collisions) will have
+  // any impact. Remember: if the glitch doesn't happen regularly, then don't fix it.
+  character.x += currentSpeed;
+  character.y -= FALLING_SPEED;
+
   if((line = characterTouchesLine(floors)) !== null){
     // This is to align the character with the floor's Y component.
     // Without this line, if the character is constantly jumping on a slope, the detection would
@@ -177,28 +217,32 @@ function fallingStatus(){
     // up or down hill as he keeps jumps (not necessarily a bug).
     character.y = getYFromX(line, character.x);
     currentState = STANDING;
+    currentFloor = line;
     return;
   }
-
-  character.x += currentSpeed;
-  character.y -= FALLING_SPEED;
-
+ 
   updateSpeed(SPEED_ACCELERATION);
 }
 
-function standingStatus(){
+function standingState(){
   let line;
-  if(FLOOR_CACHE_ENABLED && cachedFloor !== null && characterTouchesLine([cachedFloor])){
-    line = cachedFloor;
+
+  // First, check if it's still standing in the latest floor registered as 'current floor'.
+  // The heuristic is to assume it's still standing in the same floor. If it's not, then check
+  // all other floors. 
+  if(currentFloor !== null && characterTouchesLine([currentFloor])){
+    line = currentFloor;
   } else {
     line = characterTouchesLine(floors);
-    cachedFloor = line;
+    currentFloor = line;
   }
   if(line === null){
     currentState = FALLING;
     return;
   }
 
+  // TODO: Is this line necessary?
+  // If not, then this method would not be used anywhere else, so consider deletion (or keep it in case it's necessary).
   character = closestPointOnLine(line, character);
 
   updateSpeed(SPEED_ACCELERATION);
@@ -219,7 +263,7 @@ function standingStatus(){
   }
 }
 
-function jumpStatus(){
+function jumpState(){
   character.x += currentSpeed;
   character.y += currentJumpSpeed;
   currentJumpSpeed -= JUMP_DEACCELERATION;
@@ -231,12 +275,12 @@ function jumpStatus(){
 }
 
 /**
- * This is executed on every frame, despite the current status.
+ * This is executed on every frame, despite the current state.
  */
 function handleWallCollisions(){
   if((line = characterTouchesLine(walls)) !== null){
     // Is current floor below? If it's below, then don't consider collision.
-    if(cachedFloor !== null && line1BelowLine2(line, cachedFloor)){
+    if(currentFloor !== null && line1BelowLine2(line, currentFloor)){
       return;
     }
 
@@ -248,9 +292,9 @@ function handleWallCollisions(){
 
 function updateCharacter(){
   switch(currentState){
-  case FALLING:  fallingStatus();  break;
-  case STANDING: standingStatus(); break;
-  case JUMP:     jumpStatus();     break;
+  case FALLING:  fallingState();  break;
+  case STANDING: standingState(); break;
+  case JUMP:     jumpState();     break;
   }
   handleWallCollisions();
 }
@@ -308,7 +352,8 @@ function drawDebugInfo(){
       }
     },
     () => `Jump speed: ${currentJumpSpeed}`,
-    () => `Cached floor ${JSON.stringify(cachedFloor)}`
+    () => `Cached floor ${JSON.stringify(currentFloor)}`,
+    () => `Last clicked mouse pos (${Math.round(lastClickedPos.x)}, ${Math.round(lastClickedPos.y)}) (approximate)`
   ];
 
   for(let i=0; i<debugTexts.length; i++){

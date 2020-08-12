@@ -82,7 +82,7 @@ function closestPointOnLine(line, point){
     cx = x0; 
     cy = y0; 
   } 
-  return createPoint(cx, cy);
+  return new Point(cx, cy);
 }
 
 function lineSlope(line){
