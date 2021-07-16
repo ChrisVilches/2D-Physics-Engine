@@ -1,3 +1,8 @@
+// Warning: Extremely ugly and non-refactored code.
+//          Still quite legible though, because most lines of code don't depend
+//          or interact with each other, so a function can be long, and still not
+//          be bug-prone (still needs refactor).
+
 let canvas = document.getElementById("canvas")
 let width = canvas.width;
 let height = canvas.height;
@@ -54,7 +59,7 @@ const JUMP = 2;
 ///////////////////////////////////
 /// Game physics configuration ////
 ///////////////////////////////////
-const FALLING_SPEED = 5;
+const FALLING_SPEED = 4.7;
 const CHARACTER_SIZE = 5;
 const JUMP_SPEED = 10;
 const JUMP_DEACCELERATION = 0.5;
@@ -62,12 +67,14 @@ const SPEED_ACCELERATION = 0.1;
 const MAX_WALKING_SPEED = 2;
 const INITIAL_WALKING_SPEED = 0.1;
 const SPEED_ERROR = SPEED_ACCELERATION; // Speeds below this value will be equalled to zero.
-
+const WALLKICK_FRAMES = 20;
+const REPEATED_JUMP_FRAMES = 10;
+const SPEED_REQUIRED_FOR_THIRD_LEVEL_JUMP = 1.5;
 
 //////////////////////////////////////
 /// Current physics and game state ///
 //////////////////////////////////////
-let character = new Point(150, 180);
+let character = new Point(480, 250);
 const floors = [];
 const walls = [];
 let currentSpeed = 0;
@@ -80,6 +87,19 @@ let currentJumpSpeed = 0;
 
 // Used to store the last touched floor instead of getting it again.
 let currentFloor = null;
+
+// After landing, the user needs to release the UP key at least once.
+// This flag will be activated, and be used to initiate jumps. It's set to false
+// after the jump has started. Only used in standing state.
+let releasedUpAtLeastOnce = false;
+
+let currentTouchingWall = null;
+
+let framesSinceTouchedWall = 0;
+
+let framesSinceLanded = Infinity;
+
+let currentJumpLevel = 1; // 1, 2 or 3.
 
 ///////////////////////////////////
 //////// Input management /////////
@@ -100,8 +120,6 @@ let rightPressed = false;
 let leftPressed = false;
 let upPressed = false;
 let downPressed = false;
-// TODO: This is bugged. If you jump and press the jump button right away again, it will jump once again when it falls to the ground.
-let upKeyLocked = false;
 
 document.addEventListener("keydown", keyDownHandler, false);
 document.addEventListener("keyup", keyUpHandler, false);
@@ -113,7 +131,7 @@ function keyDownHandler(e) {
   case LEFT_DIR: leftPressed = true; break;
   case RIGHT_DIR: rightPressed = true; break;
   case DOWN_DIR: downPressed = true; break;
-  case UP_DIR: if(!upKeyLocked) { upPressed = true; upKeyLocked = true; } break;
+  case UP_DIR: upPressed = true; break;
   }
 }
 
@@ -124,13 +142,24 @@ function keyUpHandler(e) {
   case LEFT_DIR: leftPressed = false; break;
   case RIGHT_DIR: rightPressed = false; break;
   case DOWN_DIR: downPressed = false; break;
-  case UP_DIR: upPressed = false; upKeyLocked = false; break;
+  case UP_DIR: upPressed = false; break;
   }
 }
 
 ///////////////////////////////////
 ///// Creation of dummy map ///////
 ///////////////////////////////////
+
+function drawSquare(centerX, centerY, width, height){
+  floors.push(new Line(new Point(centerX-(width/2), centerY+(height/2)), new Point(centerX+(width/2), centerY+(height/2))));
+  walls.push(new Line(new Point(centerX+(width/2), centerY+(height/2)), new Point(centerX+(width/2), centerY-(height/2))));
+  walls.push(new Line(new Point(centerX-(width/2), centerY-(height/2)), new Point(centerX-(width/2), centerY+(height/2))));
+}
+
+drawSquare(650, 80, 50, 300);
+drawSquare(750, 120, 50, 300);
+drawSquare(700, 310, 50, 20);
+drawSquare(758, 367, 50, 20);
 
 floors.push(new Line(new Point(0, 0), new Point(100, 100)));
 floors.push(new Line(new Point(100, 100), new Point(200, 100)));
@@ -140,7 +169,7 @@ floors.push(new Line(new Point(500, 30), new Point(600, 80)));
 floors.push(new Line(new Point(300, 170), new Point(600, 200)));
 floors.push(new Line(new Point(250, 150), new Point(450, 0)))
 
-walls.push(new Line(new Point(100, 100), new Point(100, 400)));
+walls.push(new Line(new Point(100, 400), new Point(100, 100)));
 walls.push(new Line(new Point(300, 20), new Point(249, 150)));
 walls.push(new Line(new Point(550, 500), new Point(500, 20)));
 walls.push(new Line(new Point(200, 400), new Point(200, 200)));
@@ -216,16 +245,26 @@ function fallingState(){
     // detect a point with a X component different to the character's X, and it would constantly be moving
     // up or down hill as he keeps jumps (not necessarily a bug).
     character.y = getYFromX(line, character.x);
+    
+    // This code is executed when just landed. Maybe refactor into a separate method to know where
+    // to add landing logic.
     currentState = STANDING;
+    framesSinceLanded = 0;
+
     currentFloor = line;
     return;
   }
- 
+
   updateSpeed(SPEED_ACCELERATION);
+  checkAndExecuteWallKick();
 }
 
 function standingState(){
   let line;
+
+  if(!upPressed){
+    releasedUpAtLeastOnce = true;
+  }
 
   // First, check if it's still standing in the latest floor registered as 'current floor'.
   // The heuristic is to assume it's still standing in the same floor. If it's not, then check
@@ -238,14 +277,19 @@ function standingState(){
   }
   if(line === null){
     currentState = FALLING;
+    framesSinceTouchedWall = 0;
     return;
   }
 
-  // TODO: Is this line necessary?
-  // If not, then this method would not be used anywhere else, so consider deletion (or keep it in case it's necessary).
+  // This line is necessary. If removed, sometimes the character can glitch through walls
+  // when the floor and wall are in certain angles.
   character = closestPointOnLine(line, character);
 
   updateSpeed(SPEED_ACCELERATION);
+
+  if(framesSinceLanded < REPEATED_JUMP_FRAMES){
+    framesSinceLanded++;
+  }
 
   let movVector = getMovementDirection(line);
 
@@ -253,13 +297,73 @@ function standingState(){
   character.y += currentSpeed * movVector.y;
 
   // Initiate jump
-  if(upPressed){
-    if(currentState !== STANDING){
-      return;
-    }
-    upPressed = false;
+  if(upPressed && releasedUpAtLeastOnce){
+    releasedUpAtLeastOnce = false;
     currentState = JUMP;
-    currentJumpSpeed = JUMP_SPEED;
+
+    if(framesSinceLanded < REPEATED_JUMP_FRAMES){
+
+      if(currentJumpLevel == 2){
+        if(Math.abs(currentSpeed) > SPEED_REQUIRED_FOR_THIRD_LEVEL_JUMP){
+          currentJumpLevel++;
+        } else {
+          currentJumpLevel = 1;
+        }
+      } else {
+        currentJumpLevel++;
+      }
+
+      // It means it cannot go up anymore. The next time it jumps it will be a level 1.
+      if(currentJumpLevel > 3){ currentJumpLevel = 1; }
+    }
+
+    // This is to make jumps lower or higher depending
+    // on the jump level (1, 2 or 3), however it seems it doesn't work.
+    let jumpSpeedFactor;
+    switch(currentJumpLevel){
+      case 1:
+        jumpSpeedFactor = 0.6;
+      break;
+      case 2:
+        jumpSpeedFactor = 0.8;
+      break;
+      case 3:
+        jumpSpeedFactor = 1;
+      break;
+    }
+
+    // TODO: Try affecting the falling speed or deacceleration (or whatever) instead.
+    currentJumpSpeed = JUMP_SPEED * jumpSpeedFactor;
+    framesSinceTouchedWall = 0;
+  }
+
+  if(framesSinceLanded >= REPEATED_JUMP_FRAMES){
+    currentJumpLevel = 1;
+  }
+}
+
+function checkAndExecuteWallKick(){
+  if(!upPressed){
+    releasedUpAtLeastOnce = true;
+  }
+
+  // TODO: Missing check. Implement bonking and "losing the oportunity to wallkick, even
+  //       if it gains speed while falling, and touches another wall."
+
+  // TODO: This number should be higher, but with a higher number it's very difficult to wallkick.
+  //       Something else also needs to be fixed, it seems.
+  const speedEnough = Math.abs(currentSpeed) > 0;
+
+  // NOTE: The number is the frame window that allows to wallkick.
+  if(speedEnough && currentTouchingWall && releasedUpAtLeastOnce && framesSinceTouchedWall < WALLKICK_FRAMES){
+    if(upPressed){
+      // Copied from standing state. Refactor.
+      releasedUpAtLeastOnce = false;
+      currentState = JUMP;
+      currentJumpSpeed = JUMP_SPEED;
+      framesSinceTouchedWall = 0;
+      currentSpeed *= -1;
+    }
   }
 }
 
@@ -272,21 +376,44 @@ function jumpState(){
     currentState = FALLING;
   }
   updateSpeed(SPEED_ACCELERATION / 2);
+  checkAndExecuteWallKick();
 }
+
+const FRAMES_SINCE_TOUCHED_WALL_MAX = 10000;
 
 /**
  * This is executed on every frame, despite the current state.
  */
 function handleWallCollisions(){
-  if((line = characterTouchesLine(walls)) !== null){
-    // Is current floor below? If it's below, then don't consider collision.
-    if(currentFloor !== null && line1BelowLine2(line, currentFloor)){
-      return;
-    }
+  currentTouchingWall = characterTouchesLine(walls);
+  let line = currentTouchingWall;
 
-    let yPercent = (character.y - line.from.y) / (line.to.y - line.from.y);
-    let x = line.from.x -  ((line.from.x - line.to.x) * yPercent);
-    character.x = x + wallDirection(line) * CHARACTER_SIZE;
+  if(line == null){
+    framesSinceTouchedWall = 0;
+    return;
+  }
+
+  // Is current floor below? If it's below, then don't consider collision.
+  if(currentFloor !== null && line1BelowLine2(line, currentFloor)){
+    return;
+  }
+
+  let yPercent = (character.y - line.from.y) / (line.to.y - line.from.y);
+  let x = line.from.x -  ((line.from.x - line.to.x) * yPercent);
+  character.x = x + wallDirection(line) * CHARACTER_SIZE;
+
+  // Make it lose speed if it has touched a wall (falling or standing).
+  // If the number is too large, it prevents wallkicks from gaining speed.
+  // But if we only decrease speed AFTER the wallkick frame window, then it
+  // probably doesn't impact it, and we can keep both effects (wallkicking with
+  // speed, and also making it lose speed if it touches the wall for too long)
+  if(FRAMES_SINCE_TOUCHED_WALL_MAX > WALLKICK_FRAMES){
+    currentSpeed /= 1.2;
+  }
+
+  // Start counting how many frames have passed since it first touched a wall.
+  if(framesSinceTouchedWall < FRAMES_SINCE_TOUCHED_WALL_MAX){
+    framesSinceTouchedWall++;
   }
 }
 
@@ -337,10 +464,10 @@ function drawCharacter(){
 }
 
 function drawDebugInfo(){
-  let margin = 30;
-  let initialPos = 50;
+  let margin = 20;
+  let initialPos = 20;
   ctx.fillStyle = "black";
-  ctx.font = "15px Verdana";
+  ctx.font = "14px Arial";
 
   let debugTexts = [
     () => `Speed: ${currentSpeed}`,
@@ -353,7 +480,12 @@ function drawDebugInfo(){
     },
     () => `Jump speed: ${currentJumpSpeed}`,
     () => `Cached floor ${JSON.stringify(currentFloor)}`,
-    () => `Last clicked mouse pos (${Math.round(lastClickedPos.x)}, ${Math.round(lastClickedPos.y)}) (approximate)`
+    () => `Last clicked mouse pos (${Math.round(lastClickedPos.x)}, ${Math.round(lastClickedPos.y)}) (approximate)`,
+    () => `Frames since touched wall: ${framesSinceTouchedWall}`,
+    () => `Released up at least once: ${releasedUpAtLeastOnce}`,
+    () => `Current touching wall?: ${Boolean(currentTouchingWall)}`,
+    () => `Frames since landing: ${framesSinceLanded}`,
+    () => `Jump level ${currentJumpLevel}`
   ];
 
   for(let i=0; i<debugTexts.length; i++){
@@ -377,12 +509,31 @@ function draw(){
   drawDebugInfo();
 }
 
+let framesMoving = 0;
+let dirElevator = 1;
+function moveFirstFloorElevator(){
+  // TODO: Temp code just to test moving floors.
+  //       Should be refactored into an object and update method.
+  
+  floors[0].from.y += (0.8 * dirElevator);
+  floors[0].to.y += (0.8 * dirElevator);
+
+  framesMoving++;
+
+  if(framesMoving > 100){
+    framesMoving = 0;
+    dirElevator *= -1;
+  }
+}
+
 function loop(timestamp) {
   let progress = timestamp - lastRender;
   update(progress);
   draw();
   lastRender = timestamp;
   window.requestAnimationFrame(loop);
+
+  moveFirstFloorElevator();
 }
 let lastRender = 0;
 window.requestAnimationFrame(loop);
