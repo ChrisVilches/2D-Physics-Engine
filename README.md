@@ -23,5 +23,8 @@ Other than refactoring the code (which is extremely dirty right now), I'd like t
 * Mid-air double jumps.
 * Water swimming and diving.
 * Automatic/smart camera movement.
+* Add ceilings.
+* Make walking more smooth (the movement breaks a bit when two lines with different slope are connected).
+* Implement other movement mechanics.
 
 Also not 100% related to the game physics, but I'd like to implement a system that generates objects and (larger) maps randomly.

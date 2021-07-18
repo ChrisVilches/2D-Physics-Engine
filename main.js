@@ -178,6 +178,9 @@ floors.push(new Line(new Point(100, 400), new Point(200, 400)));
 floors.push(new Line(new Point(250, 200), new Point(400, 200)));
 floors.push(new Line(new Point(350, 300), new Point(450, 300)));
 floors.push(new Line(new Point(250, 350), new Point(400, 350)));
+floors.push(new Line(new Point(400, 350), new Point(434, 335)));
+floors.push(new Line(new Point(434, 335), new Point(470, 345)));
+floors.push(new Line(new Point(470, 345), new Point(530, 330)));
 
 /**
  * This method is used for all collisions against walls and floors.
@@ -250,6 +253,15 @@ function fallingState(){
     // to add landing logic.
     currentState = STANDING;
     framesSinceLanded = 0;
+
+    // Reset this flag when entering standing state.
+    // If we remove this line, then the standing state would inherit this flag's value
+    // from previous states, meaning that it could be any value.
+    // More concretely, the bug that happens if we remove this line, is this:
+    // 1. Make the character fall.
+    // 2. While falling press jump button without releasing it (it was not pressed before).
+    // 3. When it lands, it will jump again (probably because the flag is set to true).
+    releasedUpAtLeastOnce = false;
 
     currentFloor = line;
     return;
