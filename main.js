@@ -9,6 +9,7 @@ let height = canvas.height;
 document.getElementById("canvas-size").innerHTML = `${width} x ${height} (width x height)`;
 let ctx = canvas.getContext("2d");
 
+// TODO: Consider adding immutable methods.
 class Point{
   constructor(x, y){
     if(typeof x !== 'number') throw new Error("'x' must be a number");
@@ -16,16 +17,135 @@ class Point{
     this.x = x;
     this.y = y;
   }
+
+  dot(p) {
+    return this.x * p.x + this.y * p.y
+  }
+
+  cross(p) {
+    return this.x * p.y - this.y * p.x
+  }
+
+  dist(p) {
+    return this.sub(p).magnitude()
+  }
+
+  magnitude() {
+    return Math.hypot(this.x, this.y)
+  }
+
+  unitDir(p) {
+    return p.sub(this).normalize()
+  }
+
+  normalize() {
+    const m = this.magnitude()
+    return new Point(this.x / m, this.y / m)
+  }
+
+  add(p) {
+    return new Point(this.x + p.x, this.y + p.y)
+  }
+
+  sub(p) {
+    return new Point(this.x - p.x, this.y - p.y)
+  }
+
+  rotCCW() {
+    return new Point(-this.y, this.x)
+  }
+
+  scale(f) {
+    return new Point(this.x * f, this.y * f)
+  }
 }
 
-class Line{
-  constructor(point1, point2){
-    if(typeof point1.x !== 'number') throw new Error("first point's 'x' must be a number");
-    if(typeof point1.y !== 'number') throw new Error("first point's 'y' must be a number");
-    if(typeof point2.x !== 'number') throw new Error("second point's 'x' must be a number");
-    if(typeof point2.y !== 'number') throw new Error("second point's 'y' must be a number");
-    this.from = point1;
-    this.to = point2;
+// TODO: I have to add ceilings. This is probably relatively easy.
+//       (compared to walls and floors.)
+
+// TODO: Refactor using Segment { p, q }
+//       Add logic (collisions, etc) here.
+class Segment {
+  constructor(p, q){
+    this.p = p;
+    this.q = q;
+  }
+
+  scale(f) {
+    const dir = this.q.sub(this.p)
+    const scaledDir = dir.scale(f)
+    return new Segment(this.p, this.p.add(scaledDir))
+  }
+
+  dist(r) {
+    const { p, q } = this
+    if ((q.sub(p)).dot(r.sub(p)) <= 0) return p.dist(r);
+    if ((p.sub(q)).dot(r.sub(q)) <= 0) return q.dist(r);
+    return Math.abs((q.sub(p)).cross(r.sub(p))) / p.dist(q);
+  }
+
+  // TODO: Move this somewhere else.
+  ADHOC_closestPoint(r) {
+    const { p, q } = this
+    // TODO: Sadly this is necessary, otherwise the point reference
+    //       is returned, and it starts modifying the floors when
+    //       the character moves lol
+    //       UPDATE: Modified it so that it returns r if the point
+    //               cannot be projected onto the segment.
+    if ((q.sub(p)).dot(r.sub(p)) <= 0) return r // return new Point(p.x, p.y);
+    if ((p.sub(q)).dot(r.sub(q)) <= 0) return r // return new Point(q.x, q.y);
+    // TODO: Doesn't need to be unit. That wastes a sqrt(x^2 + y^2)
+    const dir = this.p.unitDir(this.q).rotCCW()
+    const t = r.add(dir)
+    const factor = t.sub(r).cross(p.sub(r)) / q.sub(p).cross(t.sub(r));
+    return this.scale(factor).q;
+  }
+
+  intersectsCircle(c, r) {
+    return this.dist(c) < r
+  }
+
+  length() {
+    return this.p.dist(this.q)
+  }
+}
+
+// TODO: Use composition, lel. Or is inheritance ok?
+//       Since not all floors are moving, it makes sense
+//       to make this class be named "moving floor",
+//       and only update the velocity for these, and not for non-moving.
+//       (to improve performance). Note that when I implement the partitioning
+//       algorithm, some floors need to be rendered (along with the movement),
+//       but not detect the collisions, so it's important to make this distinction
+//       and separate types of floors correctly.
+class MovingFloor extends Segment {
+  constructor(p, q, sequence) {
+    super(p, q)
+    this.sequence = sequence
+    this.v = sequence[0].v
+    this.frame = 0
+    this.idx = 0
+  }
+
+  updateVelocity() {
+    const { v, frames } = this.sequence[this.idx]
+    this.v = v
+    this.frame++
+
+    if (this.frame === frames) {
+      this.idx = (this.idx + 1) % this.sequence.length
+      this.frame = 0
+    }
+  }
+
+  updatePosition() {
+    this.p = this.p.add(this.v)
+    this.q = this.q.add(this.v)
+  }
+
+  update() {
+    this.updateVelocity();
+    this.updatePosition();
   }
 }
 
@@ -74,7 +194,7 @@ const SPEED_REQUIRED_FOR_THIRD_LEVEL_JUMP = 1.5;
 //////////////////////////////////////
 /// Current physics and game state ///
 //////////////////////////////////////
-let character = new Point(480, 250);
+let character = new Point(340, 455);
 const floors = [];
 const walls = [];
 let currentSpeed = 0;
@@ -151,9 +271,9 @@ function keyUpHandler(e) {
 ///////////////////////////////////
 
 function drawSquare(centerX, centerY, width, height){
-  floors.push(new Line(new Point(centerX-(width/2), centerY+(height/2)), new Point(centerX+(width/2), centerY+(height/2))));
-  walls.push(new Line(new Point(centerX+(width/2), centerY+(height/2)), new Point(centerX+(width/2), centerY-(height/2))));
-  walls.push(new Line(new Point(centerX-(width/2), centerY-(height/2)), new Point(centerX-(width/2), centerY+(height/2))));
+  floors.push(new Segment(new Point(centerX-(width/2), centerY+(height/2)), new Point(centerX+(width/2), centerY+(height/2))));
+  walls.push(new Segment(new Point(centerX+(width/2), centerY+(height/2)), new Point(centerX+(width/2), centerY-(height/2))));
+  walls.push(new Segment(new Point(centerX-(width/2), centerY-(height/2)), new Point(centerX-(width/2), centerY+(height/2))));
 }
 
 drawSquare(650, 80, 50, 300);
@@ -161,26 +281,52 @@ drawSquare(750, 120, 50, 300);
 drawSquare(700, 310, 50, 20);
 drawSquare(758, 367, 50, 20);
 
-floors.push(new Line(new Point(0, 0), new Point(100, 100)));
-floors.push(new Line(new Point(100, 100), new Point(200, 100)));
-floors.push(new Line(new Point(200, 100), new Point(300, 80)));
-floors.push(new Line(new Point(300, 80), new Point(500, 30)));
-floors.push(new Line(new Point(500, 30), new Point(600, 80)));
-floors.push(new Line(new Point(300, 170), new Point(600, 200)));
-floors.push(new Line(new Point(250, 150), new Point(450, 0)))
+floors.push(new Segment(new Point(0, 0), new Point(100, 100)));
+floors.push(new Segment(new Point(100, 100), new Point(200, 100)));
+floors.push(new Segment(new Point(200, 100), new Point(300, 80)));
+floors.push(new Segment(new Point(300, 80), new Point(500, 30)));
+floors.push(new Segment(new Point(500, 30), new Point(600, 80)));
+floors.push(new Segment(new Point(300, 170), new Point(600, 200)));
+floors.push(new Segment(new Point(250, 150), new Point(450, 0)))
 
-walls.push(new Line(new Point(100, 400), new Point(100, 100)));
-walls.push(new Line(new Point(300, 20), new Point(249, 150)));
-walls.push(new Line(new Point(550, 500), new Point(500, 20)));
-walls.push(new Line(new Point(200, 400), new Point(200, 200)));
-walls.push(new Line(new Point(150, 100), new Point(150, -100)));
-floors.push(new Line(new Point(100, 400), new Point(200, 400)));
-floors.push(new Line(new Point(250, 200), new Point(400, 200)));
-floors.push(new Line(new Point(350, 300), new Point(450, 300)));
-floors.push(new Line(new Point(250, 350), new Point(400, 350)));
-floors.push(new Line(new Point(400, 350), new Point(434, 335)));
-floors.push(new Line(new Point(434, 335), new Point(470, 345)));
-floors.push(new Line(new Point(470, 345), new Point(530, 330)));
+walls.push(new Segment(new Point(100, 400), new Point(100, 100)));
+walls.push(new Segment(new Point(300, 20), new Point(249, 150)));
+walls.push(new Segment(new Point(550, 500), new Point(500, 20)));
+walls.push(new Segment(new Point(200, 400), new Point(200, 130)));
+walls.push(new Segment(new Point(150, 100), new Point(150, -100)));
+floors.push(new Segment(new Point(100, 400), new Point(200, 400)));
+floors.push(new Segment(new Point(250, 200), new Point(400, 200)));
+floors.push(new MovingFloor(
+  new Point(350, 300),
+  new Point(450, 300),
+  [
+    {
+      v: new Point(0, -0.8),
+      frames: 100
+    },
+    {
+      v: new Point(0, 0.8),
+      frames: 100
+    }
+  ]));
+// TODO: Maybe a better API should be to specify the initial velocity.
+// Or just pass a definition of a piecewise function, and then let the
+// class evaluate that function.
+floors.push(new MovingFloor(new Point(250, 370), new Point(400, 370), [
+  {
+    v: new Point(0.5, 0),
+    frames: 100
+  },
+  {
+    v: new Point(-0.5, 0),
+    frames: 100
+  }
+]));
+floors.push(new Segment(new Point(400, 350), new Point(434, 335)));
+floors.push(new Segment(new Point(434, 335), new Point(470, 345)));
+floors.push(new Segment(new Point(470, 345), new Point(530, 330)));
+
+const movingFloors = floors.filter(f => f instanceof MovingFloor)
 
 /**
  * This method is used for all collisions against walls and floors.
@@ -191,8 +337,8 @@ floors.push(new Line(new Point(470, 345), new Point(530, 330)));
  */
 function characterTouchesLine(lines){
   for(let i=0; i<lines.length; i++){
-    let line = lines[i];
-    if(doesLineInterceptCircle(line.from, line.to, character, CHARACTER_SIZE)){
+    const line = lines[i];
+    if (line.intersectsCircle(character, CHARACTER_SIZE)) {
       return line;
     }
   }
@@ -247,6 +393,8 @@ function fallingState(){
     // Without this line, if the character is constantly jumping on a slope, the detection would
     // detect a point with a X component different to the character's X, and it would constantly be moving
     // up or down hill as he keeps jumps (not necessarily a bug).
+    // TODO: Ok but not sure why this happens. I hope I can remove this since it's
+    //       kinda sketchy.
     character.y = getYFromX(line, character.x);
     
     // This code is executed when just landed. Maybe refactor into a separate method to know where
@@ -295,18 +443,26 @@ function standingState(){
 
   // This line is necessary. If removed, sometimes the character can glitch through walls
   // when the floor and wall are in certain angles.
-  character = closestPointOnLine(line, character);
+  // TODO: Analyze why? It happens when there's a wall touching two floors (all three
+  //       elements pass through the same point. The character glitches through this point.)
+  // character = closestPointOnLine(line, character);
+  // // TODO: With the new one, it doesn't fall from moving floors.
+  character = line.ADHOC_closestPoint(character)
 
   updateSpeed(SPEED_ACCELERATION);
 
+  // TODO: Try to remove so many constants? (low priority)
   if(framesSinceLanded < REPEATED_JUMP_FRAMES){
     framesSinceLanded++;
   }
 
-  let movVector = getMovementDirection(line);
+  const mov = getMovementDirection(line);
 
-  character.x += currentSpeed * movVector.x;
-  character.y += currentSpeed * movVector.y;
+  character = character.add(mov.scale(currentSpeed))
+
+  if (line instanceof MovingFloor) {
+    character = character.add(line.v)
+  }
 
   // Initiate jump
   if(upPressed && releasedUpAtLeastOnce){
@@ -398,21 +554,24 @@ const FRAMES_SINCE_TOUCHED_WALL_MAX = 10000;
  */
 function handleWallCollisions(){
   currentTouchingWall = characterTouchesLine(walls);
-  let line = currentTouchingWall;
+  let wall = currentTouchingWall;
 
-  if(line == null){
+  if(wall == null){
     framesSinceTouchedWall = 0;
     return;
   }
 
   // Is current floor below? If it's below, then don't consider collision.
-  if(currentFloor !== null && line1BelowLine2(line, currentFloor)){
+  // I think this is to avoid detecting collisions when there's a wall or something
+  // immediately below the floor (like in a corner, in which case there shouldn't
+  // be a collision detected.)
+  if(currentFloor !== null && wallBelowFloor(wall, currentFloor)){
     return;
   }
 
-  let yPercent = (character.y - line.from.y) / (line.to.y - line.from.y);
-  let x = line.from.x -  ((line.from.x - line.to.x) * yPercent);
-  character.x = x + wallDirection(line) * CHARACTER_SIZE;
+  let yPercent = (character.y - wall.p.y) / (wall.q.y - wall.p.y);
+  let x = wall.p.x -  ((wall.p.x - wall.q.x) * yPercent);
+  character.x = x + wallDirection(wall) * CHARACTER_SIZE;
 
   // Make it lose speed if it has touched a wall (falling or standing).
   // If the number is too large, it prevents wallkicks from gaining speed.
@@ -446,7 +605,7 @@ function updateCharacter(){
  */
 function getMovementDirection(line){
   // Get X and Y components of the direction it moves.
-  let movementDirection = lineToVector(normalizeLine(line));
+  const movementDirection = line.p.unitDir(line.q)// // line.q.sub(line.p).normalize();
     
   // But the horizontal speed is determined by the key pressed, so
   // we only care about how the vertical speed changes due to the slope.
@@ -456,12 +615,15 @@ function getMovementDirection(line){
 
 function update(progress){
   updateCharacter();
+  movingFloors.forEach(f => {
+    f.update()
+  })
 }
 
 function drawLine(line){
   ctx.beginPath();
-  ctx.moveTo(line.from.x, height - line.from.y);
-  ctx.lineTo(line.to.x, height - line.to.y);
+  ctx.moveTo(line.p.x, height - line.p.y);
+  ctx.lineTo(line.q.x, height - line.q.y);
   ctx.stroke();
 }
 
@@ -520,32 +682,12 @@ function draw(){
   drawCharacter();
   drawDebugInfo();
 }
-
-let framesMoving = 0;
-let dirElevator = 1;
-function moveFirstFloorElevator(){
-  // TODO: Temp code just to test moving floors.
-  //       Should be refactored into an object and update method.
-  
-  floors[0].from.y += (0.8 * dirElevator);
-  floors[0].to.y += (0.8 * dirElevator);
-
-  framesMoving++;
-
-  if(framesMoving > 100){
-    framesMoving = 0;
-    dirElevator *= -1;
-  }
-}
-
 function loop(timestamp) {
   let progress = timestamp - lastRender;
   update(progress);
   draw();
   lastRender = timestamp;
   window.requestAnimationFrame(loop);
-
-  moveFirstFloorElevator();
 }
 let lastRender = 0;
 window.requestAnimationFrame(loop);
