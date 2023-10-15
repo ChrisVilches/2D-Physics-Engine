@@ -7,6 +7,7 @@ import {
   JUMP_DEACCELERATION,
   SPEED_ACCELERATION,
   MAX_WALKING_SPEED,
+  WALLKICK_NECESSARY_SPEED,
   WALLKICK_FRAMES,
   REPEATED_JUMP_FRAMES,
   SPEED_REQUIRED_FOR_THIRD_LEVEL_JUMP,
@@ -229,10 +230,8 @@ export class GameState {
     return JUMP_FACTOR[this._currentJumpLevel]
   }
 
-  // TODO: This number should be higher, but with a higher number it's very difficult to wallkick.
-  //       Something else also needs to be fixed, it seems.
   private hasEnoughSpeedForWallKick (): boolean {
-    return Math.abs(this._currentSpeed) > 0
+    return Math.abs(this._currentSpeed) >= WALLKICK_NECESSARY_SPEED
   }
 
   private checkAndExecuteWallKick (): void {
@@ -244,6 +243,7 @@ export class GameState {
     //       * Bonking into walls.
     //       * Restrict the situations in which wallkicking is possible (it should
     //         not always be possible, and should require a more precise timing).
+    //         e.g. prevent wallkicking the same wall consecutively.
 
     if (!this.hasEnoughSpeedForWallKick()) return
     if (this.currentTouchingWall === null) return
@@ -295,6 +295,7 @@ export class GameState {
   }
 
   // TODO: There's a bug where the character gets stuck.
+  //       The possible culprits are applyWallSpeedDecrease or applyWallHorizontalReaction
   private applyWallHorizontalReaction (wall: Segment): void {
     this._character.x = evalY(wall, this._character.y) + wallDirection(wall) * CHARACTER_SIZE
   }
