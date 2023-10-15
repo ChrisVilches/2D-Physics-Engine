@@ -40,10 +40,7 @@ export class GameState {
   // Used to store the last touched floor instead of getting it again.
   private currentFloor: Segment | null = null
 
-  // After landing, the user needs to release the UP key at least once.
-  // This flag will be activated, and be used to initiate jumps. It's set to false
-  // after the jump has started. Only used in standing state.
-  private releasedUpAtLeastOnce = false
+  private jumpBlocked = false
 
   private currentTouchingWall: Segment | null = null
 
@@ -115,7 +112,7 @@ export class GameState {
     this._character.y = evalX(floor, this._character.x)
     this._currentState = MovementState.Standing
     this.framesSinceLanded = 0
-    this.releasedUpAtLeastOnce = false
+    this.jumpBlocked = true
     this.currentFloor = floor
   }
 
@@ -144,7 +141,7 @@ export class GameState {
 
   private standingState (): void {
     if (!this.inputState.up) {
-      this.releasedUpAtLeastOnce = true
+      this.jumpBlocked = false
     }
 
     this.recalculateCurrentFloor()
@@ -212,9 +209,9 @@ export class GameState {
   //       "standing" state (by indicating it in the method name) but this is suboptimal.
   private initJumpFromStanding (): void {
     if (!this.inputState.up) return
-    if (!this.releasedUpAtLeastOnce) return
+    if (this.jumpBlocked) return
 
-    this.releasedUpAtLeastOnce = false
+    this.jumpBlocked = true
     this._currentState = MovementState.Jumping
     this.increaseJumpLevel()
 
@@ -238,11 +235,9 @@ export class GameState {
     return Math.abs(this._currentSpeed) > 0
   }
 
-  // TODO: Maybe the "releasedUpAtLeastOnce" can be handled in the input
-  //       module, instead of here.
   private checkAndExecuteWallKick (): void {
     if (!this.inputState.up) {
-      this.releasedUpAtLeastOnce = true
+      this.jumpBlocked = false
     }
 
     // TODO: Missing logic:
@@ -252,11 +247,11 @@ export class GameState {
 
     if (!this.hasEnoughSpeedForWallKick()) return
     if (this.currentTouchingWall === null) return
-    if (!this.releasedUpAtLeastOnce) return
+    if (this.jumpBlocked) return
     if (!this.inputState.up) return
     if (this.framesSinceTouchedWall >= WALLKICK_FRAMES) return
 
-    this.releasedUpAtLeastOnce = false
+    this.jumpBlocked = true
     this._currentJumpLevel = 1
     this._currentState = MovementState.Jumping
     this._currentJumpSpeed = JUMP_SPEED
