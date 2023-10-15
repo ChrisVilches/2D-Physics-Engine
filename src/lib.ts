@@ -27,6 +27,11 @@ function pointBelowFloor (r: Point, { p, q }: Segment): boolean {
   return q.sub(p).cross(r.sub(p)) < EPS
 }
 
+export function sgn (x: number): number {
+  if (Math.abs(x) < EPS) return 0
+  return x > 0 ? 1 : -1
+}
+
 /**
  * TODO: Remove in the future.
  * @deprecated

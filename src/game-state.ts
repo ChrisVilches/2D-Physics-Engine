@@ -17,7 +17,7 @@ import {
 }
   from './config.json'
 import { Point } from './point'
-import { getMovementDirection, evalX, wallBelowFloor, wallDirection, evalY, EPS } from './lib'
+import { getMovementDirection, evalX, wallBelowFloor, wallDirection, evalY, EPS, sgn } from './lib'
 import { MovingFloor } from './moving-floor'
 import { MovementState } from './movement-state'
 
@@ -290,17 +290,18 @@ export class GameState {
     }
 
     this.applyWallHorizontalReaction(wall)
-    this.applyWallSpeedDecrease()
+    this.applyWallSpeedDecrease(wall)
     this.increaseFramesSinceTouchedWall()
   }
 
-  // TODO: There's a bug where the character gets stuck.
-  //       The possible culprits are applyWallSpeedDecrease or applyWallHorizontalReaction
   private applyWallHorizontalReaction (wall: Segment): void {
     this._character.x = evalY(wall, this._character.y) + wallDirection(wall) * CHARACTER_SIZE
   }
 
-  private applyWallSpeedDecrease (): void {
+  private applyWallSpeedDecrease (wall: Segment): void {
+    // Skip if the movement is away from the wall.
+    if (wallDirection(wall) === sgn(this._currentSpeed)) return
+
     // Make it lose speed due to being in contact with a wall.
     // If it's standing, then do it immediately.
     // If it's falling/jumping, then only apply it after it's been in contact with the wall for long enough.

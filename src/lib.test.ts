@@ -1,4 +1,4 @@
-import { closestPointProjection, evalX, wallBelowFloor } from './lib'
+import { closestPointProjection, evalX, sgn, wallBelowFloor } from './lib'
 import { Point } from './point'
 import { Segment } from './segment'
 
@@ -71,6 +71,26 @@ describe(wallBelowFloor.name, () => {
     const w = new Segment(new Point(0, 0), new Point(10, 0))
     const f = new Segment(new Point(5, 5), new Point(6, -1))
     expect(wallBelowFloor(w, f)).toBe(false)
+  })
+})
+
+describe(sgn.name, () => {
+  test('zero', () => {
+    expect(sgn(0.000000001)).toBe(0)
+    expect(sgn(-0.000000001)).toBe(0)
+    expect(sgn(0)).toBe(0)
+  })
+
+  test('positive', () => {
+    expect(sgn(0.1)).toBe(1)
+    expect(sgn(34)).toBe(1)
+    expect(sgn(100000)).toBe(1)
+  })
+
+  test('negative', () => {
+    expect(sgn(-0.1)).toBe(-1)
+    expect(sgn(-34)).toBe(-1)
+    expect(sgn(-100000)).toBe(-1)
   })
 })
 
