@@ -16,7 +16,7 @@ import {
 }
   from './config.json'
 import { Point } from './point'
-import { closestPointProjection, getMovementDirection, evalX, wallBelowFloor, wallDirection, evalY } from './lib'
+import { getMovementDirection, evalX, wallBelowFloor, wallDirection, evalY, EPS } from './lib'
 import { MovingFloor } from './moving-floor'
 import { MovementState } from './movement-state'
 
@@ -28,6 +28,9 @@ const JUMP_FACTOR = {
 
 // TODO: Maybe the "falling" state can be removed, and just use "jumping", and model the
 //       speed changes using differential equations (kinematic, acceleration, etc).
+
+// TODO: Some properties should have a getter as well, like floors, etc.
+//       In other words, don't keep public stuff here.
 
 export class GameState {
   private _currentSpeed: number = 0
@@ -80,14 +83,11 @@ export class GameState {
   }
 
   private decelerate (accel: number): void {
-    // If the right/left buttons aren't pressed, then begin to decrease the speed.
-    // If it's inside the error range, then set it to zero and finish.
-    if (Math.abs(this._currentSpeed) < SPEED_ACCELERATION) {
+    if (Math.abs(this._currentSpeed) < EPS) {
       this._currentSpeed = 0
       return
     }
-    // Get the direction of where it was going before stopping and
-    // decrease so it becomes closer to zero.
+
     const dir = this._currentSpeed > 0 ? 1 : -1
     this._currentSpeed -= dir * accel
   }
@@ -112,8 +112,6 @@ export class GameState {
   }
 
   private land (floor: Segment): void {
-    // TODO: Not sure why the closestPoint function is necessary as well as this one.
-    //       Only one should be necessary, shouldn't it?
     this._character.y = evalX(floor, this._character.x)
     this._currentState = MovementState.Standing
     this.framesSinceLanded = 0
@@ -159,7 +157,7 @@ export class GameState {
 
     // This line is necessary. If removed, sometimes the character can glitch through walls
     // when the floor and wall are in certain angles.
-    this._character = closestPointProjection(this.currentFloor, this._character)
+    this._character.y = evalX(this.currentFloor, this._character.x)
 
     this.updateSpeed(SPEED_ACCELERATION)
     this.increaseFramesSinceLanded()
@@ -247,8 +245,10 @@ export class GameState {
       this.releasedUpAtLeastOnce = true
     }
 
-    // TODO: Missing check. Implement bonking and "losing the oportunity to wallkick, even
-    //       if it gains speed while falling, and touches another wall."
+    // TODO: Missing logic:
+    //       * Bonking into walls.
+    //       * Restrict the situations in which wallkicking is possible (it should
+    //         not always be possible, and should require a more precise timing).
 
     if (!this.hasEnoughSpeedForWallKick()) return
     if (this.currentTouchingWall === null) return
@@ -299,6 +299,7 @@ export class GameState {
     this.increaseFramesSinceTouchedWall()
   }
 
+  // TODO: There's a bug where the character gets stuck.
   private applyWallHorizontalReaction (wall: Segment): void {
     this._character.x = evalY(wall, this._character.y) + wallDirection(wall) * CHARACTER_SIZE
   }

@@ -1,6 +1,8 @@
 import { Point } from './point'
 import { Segment } from './segment'
 
+export const EPS = 1e-6
+
 export function wallDirection (wall: Segment): number {
   return wall.p.y - wall.q.y > 0 ? 1 : -1
 }
@@ -22,9 +24,13 @@ function segmentToAscX (s: Segment): Segment {
 
 function pointBelowFloor (r: Point, { p, q }: Segment): boolean {
   console.assert(p.x < q.x)
-  return q.sub(p).cross(r.sub(p)) < 1e-9
+  return q.sub(p).cross(r.sub(p)) < EPS
 }
 
+/**
+ * TODO: Remove in the future.
+ * @deprecated
+ */
 export function closestPointProjection (s: Segment, r: Point): Point {
   const { p, q } = s
   if ((q.sub(p)).dot(r.sub(p)) <= 0) return r
