@@ -6,9 +6,14 @@ import { GameState } from './game-state'
 import Handlebars from 'handlebars'
 import { Renderer } from './renderer'
 import { formatCurrentState } from './movement-state'
+import { Point } from './point'
 
 Handlebars.registerHelper('trunc', function (num: number) {
   return num.toFixed(4)
+})
+
+Handlebars.registerHelper('formatPoint', function (p: Point) {
+  return `(${p.x.toFixed(2)}, ${p.y.toFixed(2)})`
 })
 
 const appContainer = document.querySelector('#app') as HTMLDivElement
@@ -56,6 +61,10 @@ const infoTemplate = Handlebars.compile(`
       <div class="flex-1 text-end font-bold">Jump level</div>
       <div class="flex-1 text-start">{{jumpLevel}} / 3</div>
     </div>
+    <div class="flex space-x-4">
+      <div class="flex-1 text-end font-bold">Position</div>
+      <div class="flex-1 text-start">{{formatPoint characterPosition}}</div>
+    </div>
   </div>
 `)
 
@@ -82,7 +91,13 @@ function showDebugInfo (): void {
   const jumpSpeed = gameState.currentJumpSpeed
   const currentState = formatCurrentState(gameState.currentState)
   const jumpLevel = gameState.currentJumpLevel
-  debugInfoContainer.innerHTML = infoTemplate({ speed, jumpSpeed, currentState, jumpLevel })
+  debugInfoContainer.innerHTML = infoTemplate({
+    characterPosition: gameState.character,
+    speed,
+    jumpSpeed,
+    currentState,
+    jumpLevel
+  })
 }
 
 const renderer = new Renderer(canvas, gameState, CHARACTER_SIZE)
