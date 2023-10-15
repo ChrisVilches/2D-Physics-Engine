@@ -11,15 +11,24 @@ import {
   WALLKICK_FRAMES,
   REPEATED_JUMP_FRAMES,
   SPEED_REQUIRED_FOR_THIRD_LEVEL_JUMP,
-  FRAMES_SINCE_TOUCHED_WALL_MAX
+  FRAMES_SINCE_TOUCHED_WALL_MAX,
+  JUMP_FACTOR_1,
+  JUMP_FACTOR_2,
+  JUMP_FACTOR_3
 }
   from './config.json'
 import { Point } from './point'
-import { getMovementDirection, getYFromX, wallBelowFloor, wallDirection } from './lib'
+import { closestPointProjection, getMovementDirection, evalX, wallBelowFloor, wallDirection } from './lib'
 import { MovingFloor } from './moving-floor'
 
 export enum MovementState {
   Falling, Standing, Jumping
+}
+
+const JUMP_FACTOR = {
+  1: JUMP_FACTOR_1,
+  2: JUMP_FACTOR_2,
+  3: JUMP_FACTOR_3
 }
 
 export class GameState {
@@ -41,7 +50,7 @@ export class GameState {
 
   private framesSinceLanded = Infinity
 
-  private currentJumpLevel: number = 1
+  private currentJumpLevel: (1 | 2 | 3) = 1
 
   private _character: Point
 
@@ -82,8 +91,8 @@ export class GameState {
     }
   }
 
-  private floorCollision (floors: Segment[]): Segment | null {
-    return floors.find(f => f.intersectsCircle(this._character, CHARACTER_SIZE)) ?? null
+  private segmentCollision (segments: Segment[]): Segment | null {
+    return segments.find(f => f.intersectsCircle(this._character, CHARACTER_SIZE)) ?? null
   }
 
   private fallingState (): void {
@@ -98,7 +107,7 @@ export class GameState {
     // any impact. Remember: if the glitch doesn't happen regularly, then don't fix it.
     this._character = this._character.add(new Point(this.currentSpeed, -FALLING_SPEED))
 
-    const line = this.floorCollision(this.floors)
+    const line = this.segmentCollision(this.floors)
     if (line !== null) {
       // This is to align the character with the floor's Y component.
       // Without this line, if the character is constantly jumping on a slope, the detection would
@@ -106,7 +115,7 @@ export class GameState {
       // up or down hill as he keeps jumps (not necessarily a bug).
       // TODO: Ok but not sure why this happens. I hope I can remove this since it's
       //       kinda sketchy.
-      this._character.y = getYFromX(line, this._character.x)
+      this._character.y = evalX(line, this._character.x)
 
       // This code is executed when just landed. Maybe refactor into a separate method to know where
       // to add landing logic.
@@ -131,7 +140,7 @@ export class GameState {
   }
 
   private standingState (): void {
-    let line
+    let floor
 
     if (!this.inputState.up) {
       this.releasedUpAtLeastOnce = true
@@ -140,13 +149,13 @@ export class GameState {
     // First, check if it's still standing in the latest floor registered as 'current floor'.
     // The heuristic is to assume it's still standing in the same floor. If it's not, then check
     // all other floors.
-    if (this.currentFloor !== null && (this.floorCollision([this.currentFloor]) !== null)) {
-      line = this.currentFloor
+    if (this.currentFloor !== null && (this.segmentCollision([this.currentFloor]) !== null)) {
+      floor = this.currentFloor
     } else {
-      line = this.floorCollision(this.floors)
-      this.currentFloor = line
+      floor = this.segmentCollision(this.floors)
+      this.currentFloor = floor
     }
-    if (line === null) {
+    if (floor === null) {
       this.currentState = MovementState.Falling
       this.framesSinceTouchedWall = 0
       return
@@ -156,24 +165,20 @@ export class GameState {
     // when the floor and wall are in certain angles.
     // TODO: Analyze why? It happens when there's a wall touching two floors (all three
     //       elements pass through the same point. The character glitches through this point.)
-    // character = closestPointOnLine(line, character);
-    // // TODO: With the new one, it doesn't fall from moving floors.
-    this._character = line.ADHOC_closestPoint(this._character)
+    this._character = closestPointProjection(floor, this._character)
 
     this.updateSpeed(SPEED_ACCELERATION)
 
-    // TODO: Try to remove so many constants? (low priority)
     if (this.framesSinceLanded < REPEATED_JUMP_FRAMES) {
       this.framesSinceLanded++
     }
 
-    const mov = getMovementDirection(line)
+    const mov = getMovementDirection(floor)
 
     this._character = this._character.add(mov.scale(this.currentSpeed))
 
-    // TODO: Rename this "line"
-    if (line instanceof MovingFloor) {
-      this._character = this._character.add(line.currentVelocity)
+    if (floor instanceof MovingFloor) {
+      this._character = this._character.add(floor.currentVelocity)
     }
 
     // Initiate jump
@@ -198,28 +203,19 @@ export class GameState {
 
       // This is to make jumps lower or higher depending
       // on the jump level (1, 2 or 3), however it seems it doesn't work.
-      let jumpSpeedFactor = 0.6
-      switch (this.currentJumpLevel) {
-        case 1:
-          // Defined above.
-          // TODO: Refactor this.
-          break
-        case 2:
-          jumpSpeedFactor = 0.8
-          break
-        case 3:
-          jumpSpeedFactor = 1
-          break
-      }
 
       // TODO: Try affecting the falling speed or deacceleration (or whatever) instead.
-      this.currentJumpSpeed = JUMP_SPEED * jumpSpeedFactor
+      this.currentJumpSpeed = JUMP_SPEED * this.getJumpSpeedFactor()
       this.framesSinceTouchedWall = 0
     }
 
     if (this.framesSinceLanded >= REPEATED_JUMP_FRAMES) {
       this.currentJumpLevel = 1
     }
+  }
+
+  private getJumpSpeedFactor (): number {
+    return JUMP_FACTOR[this.currentJumpLevel]
   }
 
   private checkAndExecuteWallKick (): void {
@@ -260,8 +256,7 @@ export class GameState {
   }
 
   private handleWallCollisions (): void {
-    // TODO: Floor collision method has to be renamed
-    this.currentTouchingWall = this.floorCollision(this.walls)
+    this.currentTouchingWall = this.segmentCollision(this.walls)
     const wall = this.currentTouchingWall
 
     if (wall === null) {
@@ -312,6 +307,10 @@ export class GameState {
     })
   }
 
+  // TODO: I wish I could extract this and put it into a different module.
+  //       But how do I access all the data from another place?
+  //       I got it. I think I can just implement a "serialize" method
+  //       which returns a JSON object, and then I create the texts in the caller.
   getDebugInfo (): string[] {
     const formatPoint = ({ x, y }: Point): string => `(${Math.round(x)}, ${Math.round(y)})`
     const formatSegment = ({ p, q }: Segment): string => `${formatPoint(p)} --> ${formatPoint(q)}`
@@ -328,7 +327,7 @@ export class GameState {
       `Jump level ${this.currentJumpLevel}`,
       `Speed: ${this.currentSpeed.toFixed(4)}`,
       `Jump speed: ${this.currentJumpSpeed.toFixed(4)}`,
-      formatCurrentState(),
+      `${formatCurrentState()}`,
       `Cached floor ${this.currentFloor === null ? 'None' : formatSegment(this.currentFloor)}`,
       `Frames since touched wall: ${this.framesSinceTouchedWall}`,
       `Released up at least once: ${this.releasedUpAtLeastOnce ? 'Yes' : 'No'}`,

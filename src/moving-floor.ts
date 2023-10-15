@@ -1,11 +1,3 @@
-// TODO: Use composition, lel. Or is inheritance ok?
-//       Since not all floors are moving, it makes sense
-//       to make this class be named "moving floor",
-//       and only update the velocity for these, and not for non-moving.
-//       (to improve performance). Note that when I implement the partitioning
-//       algorithm, some floors need to be rendered (along with the movement),
-//       but not detect the collisions, so it's important to make this distinction
-
 import { Point } from './point'
 import { Segment } from './segment'
 
@@ -14,7 +6,6 @@ export interface AnimationItem {
   frames: number
 }
 
-//       and separate types of floors correctly.
 export class MovingFloor extends Segment {
   private readonly sequence: AnimationItem[]
   private frame: number
