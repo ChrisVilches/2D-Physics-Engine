@@ -2,6 +2,8 @@
 
 [![Netlify Status](https://api.netlify.com/api/v1/badges/269e8274-8b8c-4301-bf4d-4c2c5c9a2b2f/deploy-status)](https://app.netlify.com/sites/2d-physics-engine/deploys)
 
+[Live Demo](https://2d-physics-engine.netlify.app/)
+
 ## How to Run
 
 ```sh
