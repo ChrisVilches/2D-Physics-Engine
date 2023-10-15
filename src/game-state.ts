@@ -17,7 +17,7 @@ import {
 }
   from './config.json'
 import { Point } from './point'
-import { getMovementDirection, evalX, wallBelowFloor, wallDirection, evalY, EPS, sgn } from './lib'
+import { getMovementDirection, evalX, wallBelowFloor, wallDirection, evalY, sgn, closeToZero } from './lib'
 import { MovingFloor } from './moving-floor'
 import { MovementState } from './movement-state'
 
@@ -81,7 +81,7 @@ export class GameState {
   }
 
   private decelerate (accel: number): void {
-    if (Math.abs(this._currentSpeed) < EPS) {
+    if (closeToZero(this._currentSpeed)) {
       this._currentSpeed = 0
       return
     }
