@@ -25,10 +25,25 @@ export enum MovementState {
   Falling, Standing, Jumping
 }
 
+const formatCurrentState = (movementState: MovementState): string => {
+  switch (movementState) {
+    case MovementState.Jumping: return 'Jump'
+    case MovementState.Standing: return 'Standing'
+    case MovementState.Falling: return 'Falling'
+  }
+}
+
 const JUMP_FACTOR = {
   1: JUMP_FACTOR_1,
   2: JUMP_FACTOR_2,
   3: JUMP_FACTOR_3
+}
+
+interface GameStateSummary {
+  currentState: string
+  speed: number
+  jumpSpeed: number
+  jumpLevel: number
 }
 
 export class GameState {
@@ -268,7 +283,7 @@ export class GameState {
     // I think this is to avoid detecting collisions when there's a wall or something
     // immediately below the floor (like in a corner, in which case there shouldn't
     // be a collision detected.)
-    if (this.currentFloor !== null && wallBelowFloor(wall, this.currentFloor)) {
+    if (this.currentFloor !== null && this.currentState === MovementState.Standing && wallBelowFloor(wall, this.currentFloor)) {
       return
     }
 
@@ -307,32 +322,12 @@ export class GameState {
     })
   }
 
-  // TODO: I wish I could extract this and put it into a different module.
-  //       But how do I access all the data from another place?
-  //       I got it. I think I can just implement a "serialize" method
-  //       which returns a JSON object, and then I create the texts in the caller.
-  getDebugInfo (): string[] {
-    const formatPoint = ({ x, y }: Point): string => `(${Math.round(x)}, ${Math.round(y)})`
-    const formatSegment = ({ p, q }: Segment): string => `${formatPoint(p)} --> ${formatPoint(q)}`
-    const formatCurrentState = (): string => {
-      switch (this.currentState) {
-        case MovementState.Jumping: return 'Jump'
-        case MovementState.Standing: return 'Standing'
-        case MovementState.Falling: return 'Falling'
-      }
-      return 'None'
+  summary (): GameStateSummary {
+    return {
+      currentState: formatCurrentState(this.currentState),
+      speed: this.currentSpeed,
+      jumpSpeed: this.currentJumpSpeed,
+      jumpLevel: this.currentJumpLevel
     }
-
-    return [
-      `Jump level ${this.currentJumpLevel}`,
-      `Speed: ${this.currentSpeed.toFixed(4)}`,
-      `Jump speed: ${this.currentJumpSpeed.toFixed(4)}`,
-      `${formatCurrentState()}`,
-      `Cached floor ${this.currentFloor === null ? 'None' : formatSegment(this.currentFloor)}`,
-      `Frames since touched wall: ${this.framesSinceTouchedWall}`,
-      `Released up at least once: ${this.releasedUpAtLeastOnce ? 'Yes' : 'No'}`,
-      `Current touching wall?: ${(this.currentTouchingWall !== null) ? 'Yes' : 'No'}`,
-      `Frames since landing: ${this.framesSinceLanded}`
-    ]
   }
 }
