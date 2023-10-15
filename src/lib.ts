@@ -10,6 +10,11 @@ export function evalX ({ p, q }: Segment, x: number): number {
   return p.y + ((q.y - p.y) * ratio)
 }
 
+export function evalY ({ p, q }: Segment, y: number): number {
+  const ratio = (y - p.y) / (q.y - p.y)
+  return p.x + ((q.x - p.x) * ratio)
+}
+
 function segmentToAscX (s: Segment): Segment {
   if (s.p.x < s.q.x) return s
   return new Segment(s.q, s.p)

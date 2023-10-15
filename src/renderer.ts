@@ -7,7 +7,7 @@ export class Renderer {
   private readonly height: number
 
   constructor (private readonly canvas: HTMLCanvasElement, private readonly gameState: GameState, private readonly characterSize: number) {
-    this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D
+    this.ctx = this.canvas.getContext('2d')
     this.width = this.canvas.width
     this.height = this.canvas.height
   }

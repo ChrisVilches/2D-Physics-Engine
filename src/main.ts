@@ -5,6 +5,7 @@ import { InputReader } from './input'
 import { GameState } from './game-state'
 import Handlebars from 'handlebars'
 import { Renderer } from './renderer'
+import { formatCurrentState } from './movement-state'
 
 Handlebars.registerHelper('trunc', function (num: number) {
   return num.toFixed(4)
@@ -53,7 +54,7 @@ const infoTemplate = Handlebars.compile(`
     </div>
     <div class="flex space-x-4">
       <div class="flex-1 text-end font-bold">Jump level</div>
-      <div class="flex-1 text-start">{{jumpLevel}}</div>
+      <div class="flex-1 text-start">{{jumpLevel}} / 3</div>
     </div>
   </div>
 `)
@@ -77,7 +78,10 @@ function buildGameState (): GameState {
 const gameState = buildGameState()
 
 function showDebugInfo (): void {
-  const { speed, jumpSpeed, currentState, jumpLevel } = gameState.summary()
+  const speed = gameState.currentSpeed
+  const jumpSpeed = gameState.currentJumpSpeed
+  const currentState = formatCurrentState(gameState.currentState)
+  const jumpLevel = gameState.currentJumpLevel
   debugInfoContainer.innerHTML = infoTemplate({ speed, jumpSpeed, currentState, jumpLevel })
 }
 

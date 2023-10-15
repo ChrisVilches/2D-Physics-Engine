@@ -7,31 +7,18 @@ import {
   JUMP_DEACCELERATION,
   SPEED_ACCELERATION,
   MAX_WALKING_SPEED,
-  INITIAL_WALKING_SPEED,
   WALLKICK_FRAMES,
   REPEATED_JUMP_FRAMES,
   SPEED_REQUIRED_FOR_THIRD_LEVEL_JUMP,
-  FRAMES_SINCE_TOUCHED_WALL_MAX,
   JUMP_FACTOR_1,
   JUMP_FACTOR_2,
   JUMP_FACTOR_3
 }
   from './config.json'
 import { Point } from './point'
-import { closestPointProjection, getMovementDirection, evalX, wallBelowFloor, wallDirection } from './lib'
+import { closestPointProjection, getMovementDirection, evalX, wallBelowFloor, wallDirection, evalY } from './lib'
 import { MovingFloor } from './moving-floor'
-
-export enum MovementState {
-  Falling, Standing, Jumping
-}
-
-const formatCurrentState = (movementState: MovementState): string => {
-  switch (movementState) {
-    case MovementState.Jumping: return 'Jump'
-    case MovementState.Standing: return 'Standing'
-    case MovementState.Falling: return 'Falling'
-  }
-}
+import { MovementState } from './movement-state'
 
 const JUMP_FACTOR = {
   1: JUMP_FACTOR_1,
@@ -39,17 +26,13 @@ const JUMP_FACTOR = {
   3: JUMP_FACTOR_3
 }
 
-interface GameStateSummary {
-  currentState: string
-  speed: number
-  jumpSpeed: number
-  jumpLevel: number
-}
+// TODO: Maybe the "falling" state can be removed, and just use "jumping", and model the
+//       speed changes using differential equations (kinematic, acceleration, etc).
 
 export class GameState {
-  private currentSpeed: number = 0
-  private currentState = MovementState.Falling
-  private currentJumpSpeed: number = 0
+  private _currentSpeed: number = 0
+  private _currentState = MovementState.Falling
+  private _currentJumpSpeed: number = 0
 
   // Used to store the last touched floor instead of getting it again.
   private currentFloor: Segment | null = null
@@ -65,7 +48,7 @@ export class GameState {
 
   private framesSinceLanded = Infinity
 
-  private currentJumpLevel: (1 | 2 | 3) = 1
+  private _currentJumpLevel: (1 | 2 | 3) = 1
 
   private _character: Point
 
@@ -80,29 +63,47 @@ export class GameState {
     return this._character
   }
 
+  get currentState (): MovementState {
+    return this._currentState
+  }
+
+  get currentSpeed (): number {
+    return this._currentSpeed
+  }
+
+  get currentJumpSpeed (): number {
+    return this._currentJumpSpeed
+  }
+
+  get currentJumpLevel (): (1 | 2 | 3) {
+    return this._currentJumpLevel
+  }
+
+  private decelerate (accel: number): void {
+    // If the right/left buttons aren't pressed, then begin to decrease the speed.
+    // If it's inside the error range, then set it to zero and finish.
+    if (Math.abs(this._currentSpeed) < SPEED_ACCELERATION) {
+      this._currentSpeed = 0
+      return
+    }
+    // Get the direction of where it was going before stopping and
+    // decrease so it becomes closer to zero.
+    const dir = this._currentSpeed > 0 ? 1 : -1
+    this._currentSpeed -= dir * accel
+  }
+
+  private accelerate (accel: number): void {
+    const dir = (this.inputState.right ? 1 : -1)
+    this._currentSpeed += dir * accel
+    if (this._currentSpeed <= -MAX_WALKING_SPEED) this._currentSpeed = -MAX_WALKING_SPEED
+    if (this._currentSpeed >= MAX_WALKING_SPEED) this._currentSpeed = MAX_WALKING_SPEED
+  }
+
   private updateSpeed (accel: number): void {
-    if (this.inputState.right || this.inputState.left) {
-      // Increase speed in the direction of the right/left button.
-      const dir = (this.inputState.right ? 1 : -1)
-      if (this.currentSpeed === 0) {
-        this.currentSpeed = dir * INITIAL_WALKING_SPEED
-      } else {
-        this.currentSpeed += dir * accel
-        if (Math.abs(this.currentSpeed) >= MAX_WALKING_SPEED) {
-          this.currentSpeed = dir * MAX_WALKING_SPEED
-        }
-      }
+    if (!this.inputState.right && !this.inputState.left) {
+      this.decelerate(accel)
     } else {
-      // If the right/left buttons aren't pressed, then begin to decrease the speed.
-      // If it's inside the error range, then set it to zero and finish.
-      if (Math.abs(this.currentSpeed) < SPEED_ACCELERATION) {
-        this.currentSpeed = 0
-        return
-      }
-      // Get the direction of where it was going before stopping and
-      // decrease so it becomes closer to zero.
-      const dir = this.currentSpeed > 0 ? 1 : -1
-      this.currentSpeed -= dir * accel
+      this.accelerate(accel)
     }
   }
 
@@ -110,129 +111,137 @@ export class GameState {
     return segments.find(f => f.intersectsCircle(this._character, CHARACTER_SIZE)) ?? null
   }
 
+  private land (floor: Segment): void {
+    // TODO: Not sure why the closestPoint function is necessary as well as this one.
+    //       Only one should be necessary, shouldn't it?
+    this._character.y = evalX(floor, this._character.x)
+    this._currentState = MovementState.Standing
+    this.framesSinceLanded = 0
+    this.releasedUpAtLeastOnce = false
+    this.currentFloor = floor
+  }
+
   private fallingState (): void {
-    // TODO: Does it make any difference to put this code before or after the floor collision detection?
-    // There is a bug where when the game starts in the falling state, and in the floor there's a wall
-    // directly below the first floor, the currentFloor will be null (because of the order of execution
-    // in this code), and the wall below won't be ignored, and the character will glitch (i.e. be pushed
-    // by the wall), even though there is a code that ignores walls that are below.
-    // However, this only happens for the first floor collision, and only in the rare case where there is a
-    // wall directly below, so it's extremely rare anyways. Remove this code if there's no sign
-    // this order of execution (i.e. change X, Y position first, and then detect collisions) will have
-    // any impact. Remember: if the glitch doesn't happen regularly, then don't fix it.
-    this._character = this._character.add(new Point(this.currentSpeed, -FALLING_SPEED))
+    this._character.x += this._currentSpeed
+    this._character.y -= FALLING_SPEED
 
-    const line = this.segmentCollision(this.floors)
-    if (line !== null) {
-      // This is to align the character with the floor's Y component.
-      // Without this line, if the character is constantly jumping on a slope, the detection would
-      // detect a point with a X component different to the character's X, and it would constantly be moving
-      // up or down hill as he keeps jumps (not necessarily a bug).
-      // TODO: Ok but not sure why this happens. I hope I can remove this since it's
-      //       kinda sketchy.
-      this._character.y = evalX(line, this._character.x)
+    const floor = this.segmentCollision(this.floors)
 
-      // This code is executed when just landed. Maybe refactor into a separate method to know where
-      // to add landing logic.
-      this.currentState = MovementState.Standing
-      this.framesSinceLanded = 0
+    if (floor === null) {
+      this.updateSpeed(SPEED_ACCELERATION)
+      this.checkAndExecuteWallKick()
+    } else {
+      this.land(floor)
+    }
+  }
 
-      // Reset this flag when entering standing state.
-      // If we remove this line, then the standing state would inherit this flag's value
-      // from previous states, meaning that it could be any value.
-      // More concretely, the bug that happens if we remove this line, is this:
-      // 1. Make the character fall.
-      // 2. While falling press jump button without releasing it (it was not pressed before).
-      // 3. When it lands, it will jump again (probably because the flag is set to true).
-      this.releasedUpAtLeastOnce = false
-
-      this.currentFloor = line
-      return
+  private recalculateCurrentFloor (): Segment | null {
+    if (this.currentFloor !== null && this.segmentCollision([this.currentFloor]) !== null) {
+      return this.currentFloor
     }
 
-    this.updateSpeed(SPEED_ACCELERATION)
-    this.checkAndExecuteWallKick()
+    this.currentFloor = this.segmentCollision(this.floors)
+    return this.currentFloor
   }
 
   private standingState (): void {
-    let floor
-
     if (!this.inputState.up) {
       this.releasedUpAtLeastOnce = true
     }
 
-    // First, check if it's still standing in the latest floor registered as 'current floor'.
-    // The heuristic is to assume it's still standing in the same floor. If it's not, then check
-    // all other floors.
-    if (this.currentFloor !== null && (this.segmentCollision([this.currentFloor]) !== null)) {
-      floor = this.currentFloor
-    } else {
-      floor = this.segmentCollision(this.floors)
-      this.currentFloor = floor
-    }
-    if (floor === null) {
-      this.currentState = MovementState.Falling
+    this.recalculateCurrentFloor()
+
+    if (this.currentFloor === null) {
+      this._currentState = MovementState.Falling
       this.framesSinceTouchedWall = 0
       return
     }
 
     // This line is necessary. If removed, sometimes the character can glitch through walls
     // when the floor and wall are in certain angles.
-    // TODO: Analyze why? It happens when there's a wall touching two floors (all three
-    //       elements pass through the same point. The character glitches through this point.)
-    this._character = closestPointProjection(floor, this._character)
+    this._character = closestPointProjection(this.currentFloor, this._character)
 
     this.updateSpeed(SPEED_ACCELERATION)
+    this.increaseFramesSinceLanded()
+    this.standingMove()
+    this.initJumpFromStanding()
+  }
 
-    if (this.framesSinceLanded < REPEATED_JUMP_FRAMES) {
-      this.framesSinceLanded++
-    }
-
-    const mov = getMovementDirection(floor)
-
-    this._character = this._character.add(mov.scale(this.currentSpeed))
-
-    if (floor instanceof MovingFloor) {
-      this._character = this._character.add(floor.currentVelocity)
-    }
-
-    // Initiate jump
-    if (this.inputState.up && this.releasedUpAtLeastOnce) {
-      this.releasedUpAtLeastOnce = false
-      this.currentState = MovementState.Jumping
-
-      if (this.framesSinceLanded < REPEATED_JUMP_FRAMES) {
-        if (this.currentJumpLevel === 2) {
-          if (Math.abs(this.currentSpeed) > SPEED_REQUIRED_FOR_THIRD_LEVEL_JUMP) {
-            this.currentJumpLevel++
-          } else {
-            this.currentJumpLevel = 1
-          }
-        } else {
-          this.currentJumpLevel++
-        }
-
-        // It means it cannot go up anymore. The next time it jumps it will be a level 1.
-        if (this.currentJumpLevel > 3) { this.currentJumpLevel = 1 }
-      }
-
-      // This is to make jumps lower or higher depending
-      // on the jump level (1, 2 or 3), however it seems it doesn't work.
-
-      // TODO: Try affecting the falling speed or deacceleration (or whatever) instead.
-      this.currentJumpSpeed = JUMP_SPEED * this.getJumpSpeedFactor()
-      this.framesSinceTouchedWall = 0
-    }
-
+  private increaseFramesSinceLanded (): void {
+    // Increase count, but prevent overflow.
+    this.framesSinceLanded = Math.min(this.framesSinceLanded + 1, 1e8)
     if (this.framesSinceLanded >= REPEATED_JUMP_FRAMES) {
-      this.currentJumpLevel = 1
+      this._currentJumpLevel = 1
     }
+  }
+
+  private standingMove (): void {
+    if (this.currentFloor === null) return
+
+    const mov = getMovementDirection(this.currentFloor)
+
+    this._character = this._character.add(mov.scale(this._currentSpeed))
+
+    if (this.currentFloor instanceof MovingFloor) {
+      this._character = this._character.add(this.currentFloor.currentVelocity)
+    }
+  }
+
+  private increaseJumpLevel (): void {
+    if (this.framesSinceLanded >= REPEATED_JUMP_FRAMES) return
+
+    switch (this._currentJumpLevel) {
+      case 1:
+        this._currentJumpLevel++
+        break
+      case 2:
+        if (Math.abs(this._currentSpeed) > SPEED_REQUIRED_FOR_THIRD_LEVEL_JUMP) {
+          this._currentJumpLevel++
+        } else {
+          this._currentJumpLevel = 1
+        }
+        break
+      case 3:
+        this._currentJumpLevel = 1
+        break
+    }
+  }
+
+  // TODO: It'd be nice to have a state machine like what they do in Rust, where
+  //       the object can have different types (in this case, standing, falling, jumping, etc are
+  //       different types) and those types have different methods, and you can only call the ones
+  //       where it makes sense to do so. In this case I have to make sure the method is called from
+  //       "standing" state (by indicating it in the method name) but this is suboptimal.
+  private initJumpFromStanding (): void {
+    if (!this.inputState.up) return
+    if (!this.releasedUpAtLeastOnce) return
+
+    this.releasedUpAtLeastOnce = false
+    this._currentState = MovementState.Jumping
+    this.increaseJumpLevel()
+
+    // TODO: This is to make jumps lower or higher depending
+    // on the jump level (1, 2 or 3), however it seems it doesn't work.
+    // UPDATE: I don't remember what I was talking about here. Consider removing this todo.
+
+    // TODO: Try affecting the falling speed or deacceleration (or whatever) instead.
+    //       UPDATE: I don't understand what this todo was supposed to mean.
+    this._currentJumpSpeed = JUMP_SPEED * this.getJumpSpeedFactor()
+    this.framesSinceTouchedWall = 0
   }
 
   private getJumpSpeedFactor (): number {
-    return JUMP_FACTOR[this.currentJumpLevel]
+    return JUMP_FACTOR[this._currentJumpLevel]
   }
 
+  // TODO: This number should be higher, but with a higher number it's very difficult to wallkick.
+  //       Something else also needs to be fixed, it seems.
+  private hasEnoughSpeedForWallKick (): boolean {
+    return Math.abs(this._currentSpeed) > 0
+  }
+
+  // TODO: Maybe the "releasedUpAtLeastOnce" can be handled in the input
+  //       module, instead of here.
   private checkAndExecuteWallKick (): void {
     if (!this.inputState.up) {
       this.releasedUpAtLeastOnce = true
@@ -241,30 +250,27 @@ export class GameState {
     // TODO: Missing check. Implement bonking and "losing the oportunity to wallkick, even
     //       if it gains speed while falling, and touches another wall."
 
-    // TODO: This number should be higher, but with a higher number it's very difficult to wallkick.
-    //       Something else also needs to be fixed, it seems.
-    const speedEnough = Math.abs(this.currentSpeed) > 0
+    if (!this.hasEnoughSpeedForWallKick()) return
+    if (this.currentTouchingWall === null) return
+    if (!this.releasedUpAtLeastOnce) return
+    if (!this.inputState.up) return
+    if (this.framesSinceTouchedWall >= WALLKICK_FRAMES) return
 
-    // NOTE: The number is the frame window that allows to wallkick.
-    if (speedEnough && this.currentTouchingWall !== null && this.releasedUpAtLeastOnce && this.framesSinceTouchedWall < WALLKICK_FRAMES) {
-      if (this.inputState.up) {
-        // Copied from standing state. Refactor.
-        this.releasedUpAtLeastOnce = false
-        this.currentState = MovementState.Jumping
-        this.currentJumpSpeed = JUMP_SPEED
-        this.framesSinceTouchedWall = 0
-        this.currentSpeed *= -1
-      }
-    }
+    this.releasedUpAtLeastOnce = false
+    this._currentJumpLevel = 1
+    this._currentState = MovementState.Jumping
+    this._currentJumpSpeed = JUMP_SPEED
+    this.framesSinceTouchedWall = 0
+    this._currentSpeed *= -1
   }
 
   private jumpState (): void {
-    this._character.x += this.currentSpeed
-    this._character.y += this.currentJumpSpeed
-    this.currentJumpSpeed -= JUMP_DEACCELERATION
-    if (this.currentJumpSpeed <= 0) {
-      this.currentJumpSpeed = JUMP_SPEED
-      this.currentState = MovementState.Falling
+    this._character.x += this._currentSpeed
+    this._character.y += this._currentJumpSpeed
+    this._currentJumpSpeed -= JUMP_DEACCELERATION
+    if (this._currentJumpSpeed <= 0) {
+      this._currentJumpSpeed = JUMP_SPEED
+      this._currentState = MovementState.Falling
     }
     this.updateSpeed(SPEED_ACCELERATION / 2)
     this.checkAndExecuteWallKick()
@@ -279,35 +285,40 @@ export class GameState {
       return
     }
 
+    // TODO: Make this explanation simpler to understand.
     // Is current floor below? If it's below, then don't consider collision.
     // I think this is to avoid detecting collisions when there's a wall or something
     // immediately below the floor (like in a corner, in which case there shouldn't
     // be a collision detected.)
-    if (this.currentFloor !== null && this.currentState === MovementState.Standing && wallBelowFloor(wall, this.currentFloor)) {
+    if (this.currentFloor !== null && wallBelowFloor(wall, this.currentFloor)) {
       return
     }
 
-    const yPercent = (this._character.y - wall.p.y) / (wall.q.y - wall.p.y)
-    const x = wall.p.x - ((wall.p.x - wall.q.x) * yPercent)
-    this._character.x = x + wallDirection(wall) * CHARACTER_SIZE
+    this.applyWallHorizontalReaction(wall)
+    this.applyWallSpeedDecrease()
+    this.increaseFramesSinceTouchedWall()
+  }
 
-    // Make it lose speed if it has touched a wall (falling or standing).
-    // If the number is too large, it prevents wallkicks from gaining speed.
-    // But if we only decrease speed AFTER the wallkick frame window, then it
-    // probably doesn't impact it, and we can keep both effects (wallkicking with
-    // speed, and also making it lose speed if it touches the wall for too long)
-    if (FRAMES_SINCE_TOUCHED_WALL_MAX > WALLKICK_FRAMES) {
-      this.currentSpeed /= 1.2
-    }
+  private applyWallHorizontalReaction (wall: Segment): void {
+    this._character.x = evalY(wall, this._character.y) + wallDirection(wall) * CHARACTER_SIZE
+  }
 
-    // Start counting how many frames have passed since it first touched a wall.
-    if (this.framesSinceTouchedWall < FRAMES_SINCE_TOUCHED_WALL_MAX) {
-      this.framesSinceTouchedWall++
+  private applyWallSpeedDecrease (): void {
+    // Make it lose speed due to being in contact with a wall.
+    // If it's standing, then do it immediately.
+    // If it's falling/jumping, then only apply it after it's been in contact with the wall for long enough.
+    if (this._currentState === MovementState.Standing || this.framesSinceTouchedWall > WALLKICK_FRAMES) {
+      this._currentSpeed /= 1.5
     }
   }
 
+  private increaseFramesSinceTouchedWall (): void {
+    // Increase count, but prevent overflow.
+    this.framesSinceTouchedWall = Math.min(this.framesSinceTouchedWall + 1, 1e8)
+  }
+
   private updateCharacter (): void {
-    switch (this.currentState) {
+    switch (this._currentState) {
       case MovementState.Falling: this.fallingState(); break
       case MovementState.Standing: this.standingState(); break
       case MovementState.Jumping: this.jumpState(); break
@@ -320,14 +331,5 @@ export class GameState {
     this.movingFloors.forEach(f => {
       f.update()
     })
-  }
-
-  summary (): GameStateSummary {
-    return {
-      currentState: formatCurrentState(this.currentState),
-      speed: this.currentSpeed,
-      jumpSpeed: this.currentJumpSpeed,
-      jumpLevel: this.currentJumpLevel
-    }
   }
 }
