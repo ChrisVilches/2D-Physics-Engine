@@ -8,34 +8,44 @@ const KEY_CODES_DIR_MAP: Record<string, number> = {
   w: Direction.Up
 }
 
-export interface InputPressedState {
-  right: boolean
-  left: boolean
-  up: boolean
-}
+export class InputReader {
+  private _left: boolean = false
+  private _right: boolean = false
+  private _up: boolean = false
 
-// TODO: Not sure about this pattern... it mutates the state.
-
-function setPressed (dir: number, pressed: boolean, state: InputPressedState): void {
-  switch (dir) {
-    case Direction.Left: state.left = pressed
-      break
-    case Direction.Right: state.right = pressed
-      break
-    case Direction.Up: state.up = pressed
-      break
+  init (): void {
+    document.addEventListener('keydown', this.keyDownHandler.bind(this), false)
+    document.addEventListener('keyup', this.keyUpHandler.bind(this), false)
   }
-}
 
-const keyDownHandler = (state: InputPressedState) => (e: KeyboardEvent) => {
-  setPressed(KEY_CODES_DIR_MAP[e.key], true, state)
-}
+  get left (): boolean {
+    return this._left
+  }
 
-const keyUpHandler = (state: InputPressedState) => (e: KeyboardEvent) => {
-  setPressed(KEY_CODES_DIR_MAP[e.key], false, state)
-}
+  get right (): boolean {
+    return this._right
+  }
 
-export function listenInput (state: InputPressedState): void {
-  document.addEventListener('keydown', keyDownHandler(state), false)
-  document.addEventListener('keyup', keyUpHandler(state), false)
+  get up (): boolean {
+    return this._up
+  }
+
+  private setPressed (dir: number, pressed: boolean): void {
+    switch (dir) {
+      case Direction.Left: this._left = pressed
+        break
+      case Direction.Right: this._right = pressed
+        break
+      case Direction.Up: this._up = pressed
+        break
+    }
+  }
+
+  private keyDownHandler (e: KeyboardEvent): void {
+    this.setPressed(KEY_CODES_DIR_MAP[e.key], true)
+  }
+
+  private keyUpHandler (e: KeyboardEvent): void {
+    this.setPressed(KEY_CODES_DIR_MAP[e.key], false)
+  }
 }

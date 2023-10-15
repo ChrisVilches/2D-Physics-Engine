@@ -3,7 +3,7 @@ import { MovingFloor } from './moving-floor'
 import { Point } from './point'
 import { Segment } from './segment'
 
-function pointFromArray(arr: number[]): Point {
+function pointFromArray (arr: number[]): Point {
   return new Point(arr[0], arr[1])
 }
 
@@ -26,14 +26,14 @@ function segmentFromArray (arr: unknown[]): Segment {
 }
 
 interface ReadMapResult {
-  character: Point
+  initialPosition: Point
   floors: Segment[]
   walls: Segment[]
 }
 
 export function readMap (): ReadMapResult {
   return {
-    character: pointFromArray(map1.initial),
+    initialPosition: pointFromArray(map1.initial),
     floors: map1.floors.map(segmentFromArray),
     walls: map1.walls.map(segmentFromArray)
   }
