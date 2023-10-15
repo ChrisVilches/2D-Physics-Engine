@@ -9,6 +9,7 @@ export function wallDirection (wall: Segment): number {
   return wall.p.y - wall.q.y > 0 ? 1 : -1
 }
 
+/*
 // TODO: Deprecated. Remove sometime soon.
 function closestPointOnLine (line: Segment, point: Point): Point {
   const lx1 = line.p.x
@@ -33,6 +34,7 @@ function closestPointOnLine (line: Segment, point: Point): Point {
   }
   return new Point(cx, cy)
 }
+*/
 
 // Converts the line into a linear function and gets y(x).
 // Supposed to be used for floors, since walls can be vertical, this might not work (due to infinite slope).
