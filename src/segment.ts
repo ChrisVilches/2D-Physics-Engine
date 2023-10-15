@@ -25,8 +25,4 @@ export class Segment {
   intersectsCircle (c: Point, r: number): boolean {
     return this.dist(c) < r
   }
-
-  length (): number {
-    return this.p.dist(this.q)
-  }
 }

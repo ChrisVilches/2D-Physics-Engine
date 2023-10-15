@@ -1,10 +1,14 @@
-import { Segment } from './segment'
 import { CHARACTER_SIZE } from './config.json'
 import './style.css'
 import { readMap } from './map-reader'
 import { InputReader } from './input'
 import { GameState } from './game-state'
 import Handlebars from 'handlebars'
+import { Renderer } from './renderer'
+
+Handlebars.registerHelper('trunc', function (num: number) {
+  return num.toFixed(4)
+})
 
 const appContainer = document.querySelector('#app') as HTMLDivElement
 
@@ -56,14 +60,8 @@ const infoTemplate = Handlebars.compile(`
 
 appContainer.innerHTML = mainTemplate({})
 
-// TODO: I should extract the drawing class to a different file.
-//       In this file, just leave the initialization.
-
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
-const width = canvas.width
-const height = canvas.height
 const debugInfoContainer = document.getElementById('debug-info') as HTMLDivElement
-const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 const authorInfoContainer = document.getElementById('author-info') as HTMLDivElement
 authorInfoContainer.innerHTML = authorTemplate({})
 
@@ -78,46 +76,16 @@ function buildGameState (): GameState {
 
 const gameState = buildGameState()
 
-function drawSegment (s: Segment): void {
-  ctx.beginPath()
-  ctx.moveTo(s.p.x, height - s.p.y)
-  ctx.lineTo(s.q.x, height - s.q.y)
-  ctx.stroke()
-}
-
-function drawCharacter (): void {
-  ctx.fillStyle = 'red'
-  ctx.fillRect(
-    gameState.character.x - (CHARACTER_SIZE / 2),
-    height - gameState.character.y - (CHARACTER_SIZE / 2),
-    CHARACTER_SIZE,
-    CHARACTER_SIZE
-  )
-}
-
-Handlebars.registerHelper('trunc', function (num: number) {
-  return num.toFixed(4)
-})
-
 function showDebugInfo (): void {
-  ctx.fillStyle = 'black'
-  ctx.font = '14px Arial'
   const { speed, jumpSpeed, currentState, jumpLevel } = gameState.summary()
   debugInfoContainer.innerHTML = infoTemplate({ speed, jumpSpeed, currentState, jumpLevel })
 }
 
-function draw (): void {
-  ctx.clearRect(0, 0, width, height)
-  ctx.strokeStyle = 'black'
-  gameState.floors.forEach(drawSegment)
-  ctx.strokeStyle = '#ff2233'
-  gameState.walls.forEach(drawSegment)
-  drawCharacter()
-}
+const renderer = new Renderer(canvas, gameState, CHARACTER_SIZE)
 
 function loop (): void {
   gameState.update()
-  draw()
+  renderer.draw()
   showDebugInfo()
   window.requestAnimationFrame(loop)
 }
