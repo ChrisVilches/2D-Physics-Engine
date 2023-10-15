@@ -231,7 +231,7 @@ export class GameState {
     const speedEnough = Math.abs(this.currentSpeed) > 0
 
     // NOTE: The number is the frame window that allows to wallkick.
-    if (speedEnough && (this.currentTouchingWall != null) && this.releasedUpAtLeastOnce && this.framesSinceTouchedWall < WALLKICK_FRAMES) {
+    if (speedEnough && this.currentTouchingWall !== null && this.releasedUpAtLeastOnce && this.framesSinceTouchedWall < WALLKICK_FRAMES) {
       if (this.inputState.up) {
         // Copied from standing state. Refactor.
         this.releasedUpAtLeastOnce = false
