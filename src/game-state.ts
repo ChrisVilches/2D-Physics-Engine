@@ -86,8 +86,13 @@ export class GameState {
       return
     }
 
-    const dir = this._currentSpeed > 0 ? 1 : -1
-    this._currentSpeed -= dir * accel
+    // TODO: Maybe this can be moved into a function lib/util function.
+    //       Plus unit tests.
+    if (this._currentSpeed > 0) {
+      this._currentSpeed = Math.max(this._currentSpeed - accel, 0)
+    } else {
+      this._currentSpeed = Math.min(this._currentSpeed + accel, 0)
+    }
   }
 
   private accelerate (accel: number): void {
