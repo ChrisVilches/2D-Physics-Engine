@@ -47,23 +47,23 @@ const infoTemplate = Handlebars.compile(`
   <div class="">
     <div class="flex space-x-4">
       <div class="flex-1 text-end font-bold">State</div>
-      <div class="flex-1 text-start">{{currentState}}</div>
+      <div class="flex-1 text-start font-mono">{{currentState}}</div>
     </div>
     <div class="flex space-x-4">
       <div class="flex-1 text-end font-bold">Speed</div>
-      <div class="flex-1 text-start">{{trunc speed}}</div>
+      <div class="flex-1 text-start font-mono">{{trunc speed}}</div>
     </div>
     <div class="flex space-x-4">
       <div class="flex-1 text-end font-bold">Jump speed</div>
-      <div class="flex-1 text-start">{{trunc jumpSpeed}}</div>
+      <div class="flex-1 text-start font-mono">{{trunc jumpSpeed}}</div>
     </div>
     <div class="flex space-x-4">
       <div class="flex-1 text-end font-bold">Jump level</div>
-      <div class="flex-1 text-start">{{jumpLevel}} / 3</div>
+      <div class="flex-1 text-start font-mono">{{jumpLevel}} / 3</div>
     </div>
     <div class="flex space-x-4">
       <div class="flex-1 text-end font-bold">Position</div>
-      <div class="flex-1 text-start">{{formatPoint characterPosition}}</div>
+      <div class="flex-1 text-start font-mono">{{formatPoint characterPosition}}</div>
     </div>
   </div>
 `)
