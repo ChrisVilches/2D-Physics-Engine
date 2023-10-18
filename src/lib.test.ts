@@ -1,4 +1,4 @@
-import { closestPointProjection, evalX, sgn, wallBelowFloor } from './lib'
+import { convergeToZero, evalX, sgn, wallBelowFloor } from './lib'
 import { Point } from './point'
 import { Segment } from './segment'
 
@@ -94,32 +94,21 @@ describe(sgn.name, () => {
   })
 })
 
-describe(closestPointProjection.name, () => {
-  test('has projection', () => {
-    const s = new Segment(new Point(0, 0), new Point(10, 0))
-    const p = closestPointProjection(s, new Point(5, 1))
-    expect(p.x).toBeCloseTo(5)
-    expect(p.y).toBeCloseTo(0)
+describe(convergeToZero.name, () => {
+  test('positive', () => {
+    expect(convergeToZero(3, 2)).toBe(1)
+    expect(convergeToZero(3, 3)).toBe(0)
+    expect(convergeToZero(3, 6)).toBe(0)
   })
 
-  test('point in segment', () => {
-    const s = new Segment(new Point(0, 0), new Point(10, 0))
-    const p = closestPointProjection(s, new Point(6, 0))
-    expect(p.x).toBeCloseTo(6)
-    expect(p.y).toBeCloseTo(0)
+  test('zero', () => {
+    expect(convergeToZero(0, 0)).toBe(0)
+    expect(convergeToZero(0, 2)).toBe(0)
   })
 
-  test('has no projection (non-collinear)', () => {
-    const s = new Segment(new Point(0, 0), new Point(10, 0))
-    const p = closestPointProjection(s, new Point(15, 4))
-    expect(p.x).toBeCloseTo(15)
-    expect(p.y).toBeCloseTo(4)
-  })
-
-  test('has no projection (collinear)', () => {
-    const s = new Segment(new Point(0, 0), new Point(10, 0))
-    const p = closestPointProjection(s, new Point(15, 0))
-    expect(p.x).toBeCloseTo(15)
-    expect(p.y).toBeCloseTo(0)
+  test('negative', () => {
+    expect(convergeToZero(-3, 2)).toBe(-1)
+    expect(convergeToZero(-3, 3)).toBe(0)
+    expect(convergeToZero(-3, 6)).toBe(0)
   })
 })

@@ -50,20 +50,16 @@ const infoTemplate = Handlebars.compile(`
       <div class="flex-1 text-start font-mono">{{currentState}}</div>
     </div>
     <div class="flex space-x-4">
-      <div class="flex-1 text-end font-bold">Speed</div>
-      <div class="flex-1 text-start font-mono">{{trunc speed}}</div>
+      <div class="flex-1 text-end font-bold">Position</div>
+      <div class="flex-1 text-start font-mono">{{formatPoint characterPosition}}</div>
     </div>
     <div class="flex space-x-4">
-      <div class="flex-1 text-end font-bold">Jump speed</div>
-      <div class="flex-1 text-start font-mono">{{trunc jumpSpeed}}</div>
+      <div class="flex-1 text-end font-bold">Velocity</div>
+      <div class="flex-1 text-start font-mono">{{formatPoint velocity}}</div>
     </div>
     <div class="flex space-x-4">
       <div class="flex-1 text-end font-bold">Jump level</div>
       <div class="flex-1 text-start font-mono">{{jumpLevel}} / 3</div>
-    </div>
-    <div class="flex space-x-4">
-      <div class="flex-1 text-end font-bold">Position</div>
-      <div class="flex-1 text-start font-mono">{{formatPoint characterPosition}}</div>
     </div>
   </div>
 `)
@@ -76,7 +72,7 @@ const authorInfoContainer = document.getElementById('author-info') as HTMLDivEle
 authorInfoContainer.innerHTML = authorTemplate({})
 
 function buildGameState (): GameState {
-  const { initialPosition, walls, floors } = readMap()
+  const { initialPosition, walls, floors } = readMap(1)
 
   const inputState = new InputReader()
   inputState.init()
@@ -87,14 +83,12 @@ function buildGameState (): GameState {
 const gameState = buildGameState()
 
 function showDebugInfo (): void {
-  const speed = gameState.currentSpeed
-  const jumpSpeed = gameState.currentJumpSpeed
+  const velocity = new Point(gameState.xSpeed, gameState.ySpeed)
   const currentState = formatCurrentState(gameState.currentState)
   const jumpLevel = gameState.currentJumpLevel
   debugInfoContainer.innerHTML = infoTemplate({
     characterPosition: gameState.character,
-    speed,
-    jumpSpeed,
+    velocity,
     currentState,
     jumpLevel
   })

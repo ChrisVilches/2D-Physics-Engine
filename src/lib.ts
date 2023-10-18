@@ -4,7 +4,7 @@ import { Segment } from './segment'
 export const EPS = 1e-6
 
 export function wallDirection (wall: Segment): number {
-  return wall.p.y - wall.q.y > 0 ? 1 : -1
+  return wall.p.y > wall.q.y ? 1 : -1
 }
 
 export function evalX ({ p, q }: Segment, x: number): number {
@@ -27,8 +27,18 @@ function pointBelowFloor (r: Point, { p, q }: Segment): boolean {
   return q.sub(p).cross(r.sub(p)) < EPS
 }
 
-export function closeToZero (x: number): boolean {
+function closeToZero (x: number): boolean {
   return Math.abs(x) < EPS
+}
+
+export const clamp = (num: number, min: number, max: number): number => Math.min(Math.max(num, min), max)
+
+export function convergeToZero (x: number, delta: number): number {
+  if (x > 0) {
+    return Math.max(x - delta, 0)
+  } else {
+    return Math.min(x + delta, 0)
+  }
 }
 
 export function sgn (x: number): number {
@@ -36,18 +46,8 @@ export function sgn (x: number): number {
   return x > 0 ? 1 : -1
 }
 
-/**
- * TODO: Remove in the future.
- * @deprecated
- */
-export function closestPointProjection (s: Segment, r: Point): Point {
-  const { p, q } = s
-  if ((q.sub(p)).dot(r.sub(p)) <= 0) return r
-  if ((p.sub(q)).dot(r.sub(q)) <= 0) return r
-  const dir = p.sub(q).rotCCW()
-  const t = r.add(dir)
-  const factor = t.sub(r).cross(p.sub(r)) / q.sub(p).cross(t.sub(r))
-  return s.scale(factor).q
+export function wallBelowCharacter ({ p, q }: Segment, c: Point): boolean {
+  return q.sub(p).cross(c.sub(p)) < 0 || (p.y <= c.y && q.y <= c.y)
 }
 
 export function wallBelowFloor ({ p, q }: Segment, floor: Segment): boolean {

@@ -1,4 +1,5 @@
 import * as map1 from '../maps/map1.json'
+import * as map2 from '../maps/map2.json'
 import { MovingFloor } from './moving-floor'
 import { Point } from './point'
 import { Segment } from './segment'
@@ -31,10 +32,17 @@ interface ReadMapResult {
   walls: Segment[]
 }
 
-export function readMap (): ReadMapResult {
+const maps = {
+  1: map1,
+  2: map2
+}
+
+export function readMap (mapNum: keyof typeof maps): ReadMapResult {
+  const map = maps[mapNum]
+
   return {
-    initialPosition: pointFromArray(map1.initial),
-    floors: map1.floors.map(segmentFromArray),
-    walls: map1.walls.map(segmentFromArray)
+    initialPosition: pointFromArray(map.initial),
+    floors: map.floors.map(segmentFromArray),
+    walls: map.walls.map(segmentFromArray)
   }
 }

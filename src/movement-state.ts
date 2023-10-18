@@ -1,11 +1,10 @@
 export enum MovementState {
-  Falling, Standing, Jumping
+  Standing, MidAir
 }
 
 export const formatCurrentState = (movementState: MovementState): string => {
   switch (movementState) {
-    case MovementState.Jumping: return 'Jump'
+    case MovementState.MidAir: return 'Mid-Air'
     case MovementState.Standing: return 'Standing'
-    case MovementState.Falling: return 'Falling'
   }
 }
