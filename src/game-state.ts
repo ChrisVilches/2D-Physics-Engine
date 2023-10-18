@@ -42,7 +42,7 @@ export class GameState {
   private _character: Point
   private readonly movingFloors: MovingFloor[]
 
-  constructor (private readonly inputState: InputReader, private readonly walls: Segment[], private readonly floors: Segment[], initialPosition: Point) {
+  constructor (private readonly inputState: InputReader, readonly walls: Segment[], readonly floors: Segment[], initialPosition: Point) {
     this._character = new Point(initialPosition.x, initialPosition.y)
     this.movingFloors = floors.filter(f => f instanceof MovingFloor) as MovingFloor[]
   }
